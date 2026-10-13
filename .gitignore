@@ -1,0 +1,38 @@
+# ---- 运行时产物：预览/原片 WAV、贡献量 npz、转码与 A/B 片段 ----
+# 全部可再生，且可能达数 GB。服务端有自动回收（默认上限 2GB），但不要提交。
+cache/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ---- 训练/评判数据（不出库：体积大且可能涉版权与隐私）----
+origin/
+!origin/.gitkeep
+
+# 导出的成品音频
+*.wav
+*.mp3
+*.m4a
+*.flac
+!tests/fixtures/*.wav
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 本机审计与探针脚本（开发期临时产物，非软件本体）----
+_audit_probe*.py
+_*_probe.py
+_range_audit.py
+_mix_debug.py
+_remix_probe.py
+_frozen_real.py
+_scan_out.txt
+_scan_err.txt

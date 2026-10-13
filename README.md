@@ -10,6 +10,7 @@
 | 依赖 | `numpy`（唯一硬依赖）；可选 `ffmpeg`（读 mp3/m4a/mov/mp4 时用） |
 | 实测规模 | 8.4 分钟 / 48k / 立体声素材整链约 **149 s**（≈295 ms/秒音频） |
 | 处理链 | 9 段固定顺序，逐段可开关、可调干湿比、可调音台推子 |
+| 许可证 | [MIT](LICENSE) |
 
 > 工程名 `LiveFix`，发布名 `LiveSoundFix`，两者指同一个项目。
 
@@ -359,4 +360,9 @@ _*_probe.py
 
 ## 许可证
 
-尚未添加 `LICENSE`。若需公开分发，建议明确许可；注意参考实现中 `rajmic/declipping2020_codes` 为 GPL-3.0、`facebookresearch/denoiser` 为 CC-BY-NC-4.0，本项目未使用其代码。
+[MIT](LICENSE) © 2026 Naiyalatuotip（见 `LICENSE`）。
+
+第三方说明：唯一运行时依赖是 **NumPy**（BSD-3-Clause）。可选的外部程序是 **ffmpeg**（LGPL/GPL，仅在你读取 mp3/m4a/mov/mp4 时被调用，未链接进本项目）。
+算法均为按公开论文自行实现，**未包含任何第三方项目源码**；审计中提到的备选方案
+`rajmic/declipping2020_codes`（GPL-3.0）与 `facebookresearch/denoiser`（CC-BY-NC-4.0）
+仅作参考，代码未被采用。

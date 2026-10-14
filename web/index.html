@@ -546,8 +546,10 @@ const TIPS = {
   /* —— m1 参数 —— */
   "m1.weight": "重量感 (weight)\n30–150Hz 静态提升，0–1\n补低频厚度、拉满 +11dB，过多会浑",
   "m1.density": "密度 (density)\n40–250Hz 静态 + 向上压缩 0–1\n让中低频更致密；拉满 +8dB，过密会显挤",
-  "m1.sub": "次谐波 (sub)\n20–90Hz 相位减半合成 0–1\n相机录音缺超低时用；拉满 +5dB，多了会糊",
+  "m1.sub": "次谐波 (sub)\n20–80Hz 包络驱动合成 0–1\n相机录音缺超低时用；拉满 +5dB，多了会糊",
   "m1.punch": "冲击力 (punch)\n100–700Hz 自适应瞬态 0–1\n让底鼓更有冲击；峰值帧 +9dB，镲片多会吵",
+  "m1.ring": "低频混响衰减 (ring)\n25–180Hz 拖尾抑制 0–1\n砍驻波拖尾治嗡嗡声，只压衰减段不动攻击，最深 −12dB",
+  "m1.dive": "下潜重建 (dive)\n20–50Hz 包络合成 0–1\n重建相机麦滚降缺失的次低频，跟随底鼓包络，拉满约 +12dB",
   /* —— m2 参数 —— */
   "m2.air": "空气感 (air)\n11–18kHz 包络外推 0–1\n补回高频空气感；拉满 +7dB，过量会刺",
   "m2.detail": "细节 (detail)\n1.4–7kHz 相位加倍谐波 0–1\n给中高频加泛音细节；拉满 +3.5dB",
@@ -734,11 +736,13 @@ const MODS = {
     { k: "declip", label: "削波重建", min: 0, max: 1, step: .05, dec: 2 },
     { k: "pump", label: "泵感控制", min: 0, max: 1, step: .05, dec: 2 },
   ]},
-  m1: { name: "中低频重建", algo: "帧域能量驱动频段增益 · 次谐波合成 · 向上密度压缩", params: [
+  m1: { name: "中低频重建", algo: "静态+自参考双层增益 · 包络驱动次谐波 · 拖尾抑制 · 下潜重建", params: [
     { k: "weight", label: "重量感", min: 0, max: 1, step: .05, dec: 2 },
     { k: "density", label: "密度", min: 0, max: 1, step: .05, dec: 2 },
     { k: "sub", label: "次谐波", min: 0, max: 1, step: .05, dec: 2 },
     { k: "punch", label: "冲击力", min: 0, max: 1, step: .05, dec: 2 },
+    { k: "ring", label: "低频混响衰减", min: 0, max: 1, step: .05, dec: 2 },
+    { k: "dive", label: "下潜重建", min: 0, max: 1, step: .05, dec: 2 },
   ]},
   m2: { name: "中高频补充", algo: "倒谱包络外推 · 谐波激励 · 嘶声软压", params: [
     { k: "air", label: "空气感", min: 0, max: 1, step: .05, dec: 2 },

@@ -194,7 +194,7 @@ api.models()     # -> {"models":["none", ...livefix_models/*.npz 文件名]}
  "sep":{"on":true,"mix":100,"mode":"hpss","routing":"graded","vocal_gain":1.0,"low_gain":1.0,"perc_gain":1.0,"other_gain":0.6},
  "ai":{"on":false,"mix":100,"model":"none","focus":"low","strength":0.7},
  "m5":{"on":true,"mix":100,"denoise":0.0,"floor_db":-60,"hum":0.2,"mains":50,"declip":0.0,"pump":0.0},
- "m1":{"on":true,"mix":100,"weight":0.2,"density":0.25,"sub":0.15,"punch":0.5,"tame":0.0,"tame_f":63.0,"tame_q":2.0},
+ "m1":{"on":true,"mix":100,"weight":0.2,"density":0.25,"sub":0.15,"punch":0.5,"tame":0.0,"tame_f":63.0,"tame_q":2.0,"ring":0.0,"dive":0.0},
  "m2":{"on":true,"mix":100,"air":0.45,"detail":0.5,"dehiss":0.1,"ext_hz":15100},
  "m3":{"on":true,"mix":100,"clarity":0.35,"room":0.5,"harsh":0.0,"ess":0.0},
  "m4":{"on":true,"mix":100,"width_low":0.56,"width_mid":1.75,"width_high":1.75,"depth":0.4,"rotation":0.0},
@@ -227,6 +227,8 @@ api.models()     # -> {"models":["none", ...livefix_models/*.npz 文件名]}
 | m1.sub | 20-90Hz | **+5.4** | +12.8 |
 | m1.punch | 100-700Hz | +6.2 | **+9.0** |
 | m1.tame | 40-100Hz | −0.6 | **−4.4** |
+| m1.ring | 25-180Hz 拖尾 | −0.3 | **−12.0** |
+| m1.dive | 20-50Hz 重建 | **+7.8** | +26.5 |
 | m2.air | 11-18kHz | **+7.0** | +23.1 |
 | m2.detail | 1.4-7kHz | **+3.5** | +8.2 |
 | m2.dehiss | 6-16kHz | −1.1 | **−18.4** |
@@ -256,7 +258,8 @@ api.models()     # -> {"models":["none", ...livefix_models/*.npz 文件名]}
 
 | 模块 | 旧行为 | 新行为 |
 |---|---|---|
-| m1 | 阈值是绝对 dBFS（REF_W_DB=−34 / REF_D_DB=−30）；本素材带内中位 −30.2 dBFS 故只有 22% 帧触发，`weight` 拉满只动 0.79dB | 改成「**静态增益 + 相对本轨分位数的动态分量**」两段式：`weight` 拉满 = 30-150Hz **静态 +9dB** 再叠加自适应动态；`density` 静态 +6dB + 最多 +12dB 向上压缩；`punch` 阈值改自适应分位；`sub` 低架 +9dB 且**相位减半**生成真次谐波（旧版复制相位=假谐波）；`tame` 上限 12dB 且默认改 0（实测净损失） |
+| m1.ring/dive（2026-10-14 新增） | — | `ring` 低频混响衰减：25-180Hz 取「过去 30 帧峰值 vs 未来 50 帧谷值」检测拖尾，只砍衰减段（一窗跌幅 ≤35% 判持续音/贝斯延音保护），最深 −12dB，攻击实测只动 −0.16dB；`dive` 下潜重建：20-50Hz 包络驱动一致 tile（源 = 0.55·\|X(2f)\|+0.22·\|X(3f)\|）+ 4dB 低架，20-40Hz 实测 +11.9dB。**关键发现（ISTFT 相干条件）**：4 帧重叠相加要求 bin k 的 tile 相位每帧推进 2πk·hop/N——跨 bin 复制、固定初相、纯随机游走全部被相消 ~93%（bin2 仅存 0.8/100，仅 k≡0 mod 4 幸免），`_env_tile` 已加载波项修复；纯随机游走相位还会把能量灌进 DC（非平稳红谱） |
+| m1 | 阈值是绝对 dBFS（REF_W_DB=−34 / REF_D_DB=−30）；本素材带内中位 −30.2 dBFS 故只有 22% 帧触发，`weight` 拉满只动 0.79dB | 改成「**静态增益 + 相对本轨分位数的动态分量**」两段式：`weight` 拉满 = 30-150Hz **静态 +9dB** 再叠加自适应动态；`density` 静态 +6dB + 最多 +12dB 向上压缩；`punch` 阈值改自适应分位；`sub` 低架 +9dB 且**包络驱动次谐波**（20-80Hz 载波相干 tile，同上相干条件）；`tame` 上限 12dB 且默认改 0（实测净损失） |
 | m2 | `air` 合成 4-8k 的 8% 能量，与素材高频存量耦合，拉满只动 0.48dB；斜边放在 ext_hz **以上**导致实际从 13.9k 才满量 | `air` 改「**dB 目标制**」：拉满 = ext_hz 以上带内能量 **+18dB**（相对该带自身，带 4-8k 的 −40dB 下限）；交叉淡化移到 ext_hz **以下** 1/3 八度，`ext_hz` 才真的是「从哪开始补」；扩展上界收在 18kHz（旧版一路铺到 24k，能量大半听不见）；`detail` 改**相位加倍**（真二次谐波）+ 4-8k 高架 6dB；`dehiss` 改为压制**贴近噪声底**的 bin（旧版压的是超底噪 +18dB 的内容，实测几乎不触发） |
 | m3 | `clarity`/`harsh`/`ess` 用绝对阈值（r>1.2 / 超参考+4dB / r2>2），真实混音几乎不触发（拉满 0.17 / 0.11 / 0.01 dB） | 三个都改「**对本轨自身分布的高分位帧生效**」（clarity p55→p92、harsh p75、ess p85），保证任何素材上都有权威度；上限提到 9 / 9 / 18 dB |
 | m4.depth | 对 S 加低通梳状反射后把 S 的 RMS **归一回原值** —— 归一让 S/M 比恒不变，实测 depth 0→1 只动 **0.03dB**（参数完全无效） | 改为把 **M 的全通去相关分量**（3 级一级全通级联，幅度平坦不染色）注入 S，再做 **(M,S) 联合功率归一**（只按总功率缩放两者）→ S/M 比真实上升（实测 ×2.65），而总电平不变（RMS 差 0.000dB）。stats 新增 `mono_fold_db`（单声道折叠损失）与 `norm_db` |
@@ -270,7 +273,7 @@ api.models()     # -> {"models":["none", ...livefix_models/*.npz 文件名]}
 sep   : on  hpss  graded  vocal/low/perc=1.0  other_gain=0.6      （截图未含，维持旧校准值）
 ai    : off                                                       （接口预留，截图未含）
 m5    : on  denoise=0.00  floor_db=-60  hum=0.20  mains=50  declip=0.00  pump=0.00
-m1    : on  weight=0.20  density=0.25  sub=0.15  punch=0.50  tame=0
+m1    : on  weight=0.20  density=0.25  sub=0.15  punch=0.50  tame=0  ring=0  dive=0
 m2    : on  air=0.45  detail=0.50  dehiss=0.10  ext_hz=15100
 m3    : on  clarity=0.35  room=0.50  harsh=0.00  ess=0.00
 m4    : on  width_low=0.56  width_mid=1.75  width_high=1.75  depth=0.40  rotation=0

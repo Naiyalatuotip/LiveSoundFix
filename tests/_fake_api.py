@@ -46,7 +46,7 @@ _jobs: dict[str, dict] = {}
 
 
 def state():
-    return {"version": "1.1-fake", "config": copy.deepcopy(DEFAULT_CONFIG),
+    return {"version": "1.1.1-fake", "config": copy.deepcopy(DEFAULT_CONFIG),
             "models": ["none"], "chain": list(CHAIN)}
 
 

@@ -112,7 +112,7 @@ def _init():
 
 def state():
     return {
-        "version": "1.1",
+        "version": "1.1.1",     # 与 git tag / GitHub Release 对应，改动见 CHANGELOG.md
         "config": engine.default_config(),
         "models": engine.list_models(),
         "chain": list(engine.CHAIN),

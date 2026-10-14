@@ -55,8 +55,11 @@ DEFAULT_CONFIG = {
         "m5": {"on": True, "mix": 100, "denoise": 0.0, "floor_db": -60, "hum": 0.20,
                "mains": 50, "declip": 0.0, "pump": 0.0},
         # 用户版 m1：冲击力拉到 0.50；tame 未在 UI 暴露，保持 0（此前实测为净损失）
+        # 新增 ring（低频混响衰减）/ dive（下潜重建，20-50Hz）：scan_m1_extra 在冻结基准上
+        # 均为净负（频谱距离不感知嗡嗡声/下潜），故默认 0，由用户按场地在预览中试听决定。
         "m1": {"on": True, "mix": 100, "weight": 0.20, "density": 0.25, "sub": 0.15,
-               "punch": 0.50, "tame": 0.0, "tame_f": 63.0, "tame_q": 2.0},
+               "punch": 0.50, "tame": 0.0, "tame_f": 63.0, "tame_q": 2.0,
+               "ring": 0.0, "dive": 0.0},
         # 用户版 m2：细节开到 0.50（相位已修正为真二次谐波）、延伸到 15100Hz
         "m2": {"on": True, "mix": 100, "air": 0.45, "detail": 0.50, "dehiss": 0.10,
                "ext_hz": 15100},

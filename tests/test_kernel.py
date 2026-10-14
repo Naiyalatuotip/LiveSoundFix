@@ -70,7 +70,9 @@ _t2 = wavio.transcode_tag(_src)
 assert _t1 == _t2, f"转码缓存名不稳定：{_t1} != {_t2}"
 import time as _time
 _time.sleep(0.01)
-os.utime(_src, None)                      # 改动 mtime
+_st = os.stat(_src)
+os.utime(_src, (_st.st_atime, _st.st_mtime - 3600.0))   # 显式回拨 1h：Windows 时间戳粒度
+                                                        # 会让 utime(now) 落回原刻度（15.6ms 计时器）
 _t3 = wavio.transcode_tag(_src)
 print(f"transcode tag: {_t1} (稳定) -> {_t3} (改 mtime 后)")
 assert _t3 != _t1, "mtime 变化后转码名应失效"

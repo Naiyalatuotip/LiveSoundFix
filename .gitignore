@@ -36,3 +36,9 @@ _remix_probe.py
 _frozen_real.py
 _scan_out.txt
 _scan_err.txt
+
+# ---- UI 调试残留（CDP 脚本 / 截图 / 临时抽出的 js）----
+tests/_tip_*
+tests/_net_diag*.mjs
+tests/_tp2_verify.mjs
+_*.png

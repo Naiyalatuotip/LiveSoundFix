@@ -219,6 +219,12 @@ canvas.chart{width:100%; display:block; background:#FBF7F0; border:1px solid var
 .mixrow.dis .mv{color:var(--muted);}
 .wtag{display:inline-block; font-size:11px; background:var(--ink); color:#fff; border-radius:5px;
   padding:1px 8px; margin-left:8px; vertical-align:middle;}
+/* ---------- 参数悬浮解释框（单例 #tip） ---------- */
+#tip{position:fixed; z-index:1000; max-width:340px; box-sizing:border-box;
+  background:#081F5C; color:#D0E3FF; padding:10px 13px; border-radius:6px;
+  font-size:12.5px; line-height:1.6; pointer-events:none; white-space:pre-line;
+  display:none; opacity:0; box-shadow:0 6px 18px rgba(8,31,92,.28);}
+#tip .tip-h{display:block; color:#BAD6EB; font-weight:700; margin-bottom:2px;}
 /* spinner */
 .spin{display:inline-block; width:15px; height:15px; border:2.5px solid rgba(255,255,255,.4);
   border-top-color:#fff; border-radius:50%; animation:sp .8s linear infinite; vertical-align:-3px; margin-right:8px;}
@@ -231,6 +237,7 @@ canvas.chart{width:100%; display:block; background:#FBF7F0; border:1px solid var
   <span class="msg" id="bannerMsg"></span>
   <button onclick="hideBanner()">关闭</button>
 </div>
+<div id="tip"></div>
 
 <div class="topbar">
   <div class="wrap">
@@ -270,14 +277,14 @@ canvas.chart{width:100%; display:block; background:#FBF7F0; border:1px solid var
     <div class="sec-h"><div class="no">2</div><h2>进度</h2><span class="hint">发起处理后自动推进 · 预计剩余实时估算</span></div>
     <div class="progstrip" id="progCard">
       <div class="progtop">
-        <span class="pgstage" id="pgStage">待机</span>
-        <span class="pgeta" id="pgEta">预计剩余 —</span>
+        <span class="pgstage" id="pgStage" data-tip="prog.stage">待机</span>
+        <span class="pgeta" id="pgEta" data-tip="prog.eta">预计剩余 —</span>
       </div>
       <div class="ptrack"><div class="pfill" id="pgFill"></div></div>
       <div class="progmeta">
         <span class="pct" id="pgPct">0%</span>
         <div class="pmini"><div class="pminif" id="pgSFill"></div></div>
-        <span id="pgSLabel">阶段内 —</span>
+        <span id="pgSLabel" data-tip="prog.sstage">阶段内 —</span>
         <button class="big" id="btnProc" style="margin-left:auto" disabled onclick="doProcess()">开始处理</button>
         <span class="rownote" id="procState" style="margin-top:0"></span>
       </div>
@@ -326,16 +333,16 @@ canvas.chart{width:100%; display:block; background:#FBF7F0; border:1px solid var
   <section class="sec">
     <div class="sec-h"><div class="no">6</div><h2>导出</h2><span class="hint">渲染结果 + 烘焙实时 EQ + 调音台混音</span></div>
     <div class="card">
-      <div class="optrow"><span class="lb">声道</span>
+      <div class="optrow"><span class="lb" data-tip="exp.ch">声道</span>
         <label class="radio"><input type="radio" name="ch" value="stereo"> stereo</label>
         <label class="radio"><input type="radio" name="ch" value="mono"> mono</label>
         <label class="radio"><input type="radio" name="ch" value="5.1"> 5.1</label>
       </div>
-      <div class="optrow"><span class="lb">位深</span>
+      <div class="optrow"><span class="lb" data-tip="exp.bd">位深</span>
         <label class="radio"><input type="radio" name="bd" value="16"> 16</label>
         <label class="radio"><input type="radio" name="bd" value="24"> 24</label>
         <label class="radio"><input type="radio" name="bd" value="32"> 32 float</label>
-        <label class="ck" style="margin-left:26px"><input type="checkbox" id="ckLoud"> 响度归一</label>
+        <label class="ck" style="margin-left:26px" data-tip="exp.loud"><input type="checkbox" id="ckLoud"> 响度归一</label>
       </div>
       <input type="text" id="outPath" placeholder="输出路径">
       <button id="btnExp" disabled onclick="doExport()">
@@ -477,6 +484,198 @@ function showBanner(msg) {
 }
 function hideBanner() { document.getElementById("banner").style.display = "none"; }
 
+/* =========================================================
+   参数悬浮解释框（单例 #tip · 事件委托）
+   时序：enter→300ms 悬停意图→浮现(.1s)；leave→**立刻**渐隐(.12s)→display:none
+        宽限内移回同一目标 → 取消淡出并拉回，不重播；淡入途中移开 → 反向淡出
+   内容：TIPS 表按「参数名(key) + 频段·操作 + 目的·效果」三段，正文约 40 字
+   ========================================================= */
+const tipDiv = document.getElementById("tip");
+let tipTarget = null;      // 当前关联的标题元素（scroll/resize 跟随用）
+let tipShowT = 0, tipHideT = 0, tipFadeT = 0;
+let tipVisible = false;
+
+/* 内容表：首行「参数名 (key)」＋ 第二行「频段 · 操作方式」＋ 第三行「目的 · 预估效果」
+   整框正文控制在 40 字左右（第二、三行合计），效果数字取自 _range_audit.py 实测。 */
+const TIPS = {
+  /* —— 区1 链 9 卡标题 —— */
+  "mod.sep": "源分离分级 (sep)\n全频段分四路掩码（HPSS）\n让人声与伴奏能分开修，全增益恒等不变总能量",
+  "mod.ai": "AI 重建 (ai)\n30–5000Hz 频谱掩码（预留）\n模型未接入，当前全程透传、无任何效果",
+  "mod.m5": "修复层 (m5)\n削波 / 50Hz 陷波 / 底噪 / 电平\n素材越脏越该开；降噪拉满可压 −15dB",
+  "mod.m1": "中低频重建 (m1)\n30–700Hz 分带增益与次谐波\n低频单薄时补厚度与冲击，拉满 +11dB",
+  "mod.m2": "中高频补充 (m2)\n1400–18000Hz 外推与激励\n补被截断的高频，空气感拉满 +7dB",
+  "mod.m3": "人声去掩蔽 (m3)\n90Hz–13kHz 动态处理\n人声发糊、残响与齿音重时用，峰值 −9dB",
+  "mod.m4": "声场扩展 (m4)\n全频段 M/S 宽度与纵深\n相机单点录音加宽声场，侧信号拉满 +12dB",
+  "mod.m6": "母带终整 (m6)\n全频段响度 / LRA / 真峰限制\n对齐投放平台响度，真峰不超 −1dBTP",
+  "mod.dyneq": "动态均衡 (dyneq)\n可调频点 ±12dB，Q 控带宽\n只在频段超标时动态下压，静态曲线需手动设",
+  /* —— sep 参数 —— */
+  "sep.mode": "分离模式 (mode)\n全频段，HPSS 中值 / NMF 迭代\nHPSS 快、NMF 准但更慢，先用 HPSS 试听",
+  "sep.routing": "分级路由 (routing)\n全频段路由：graded 分路 / mix 合回\n想分别修伴奏与人声就选分级，只想降噪选合回",
+  "sep.vocal_gain": "人声增益 (vocal_gain)\n人声路 150–4500Hz，0–2 倍\n被伴奏盖住时提起，拉满约 +6dB",
+  "sep.low_gain": "低频增益 (low_gain)\n低频路 <150Hz，0–2 倍\n低频浑浊或抢拍时调低；0.5 时实测 −3dB",
+  "sep.perc_gain": "打击增益 (perc_gain)\n打击路 2kHz 以上，0–2 倍\n鼓点太吵就压、太闷就提，拉满 +6dB",
+  "sep.other_gain": "其余增益 (other_gain)\n其余路（全频段反射）0–2 倍\n压低房间反射与观众噪声，0.4 实测更干净",
+  /* —— ai 参数 —— */
+  "ai.focus": "焦点 (focus)\n增强目标二选一：低频 / 人声\n接口预留，等模型就绪后按素材短板选择",
+  "ai.strength": "强度 (strength)\n全频段增强混合比例 0–1\n接口预留暂不可用；默认 0.7，越大越激进",
+  /* —— m5 参数 —— */
+  "m5.denoise": "降噪 (denoise)\n3–8kHz 最小值统计谱减 0–1\n压底噪，拉满 −15dB 但会吃细节",
+  "m5.floor_db": "噪底门限 (floor_db)\n全频段谱减增益下限 −60..0dB\n限制最低衰减量：越低降噪越狠、也越吃细节",
+  "m5.hum": "交流声抑制 (hum)\n50/100Hz 陷波，0–1\n有哼声才开；拉满可压 −21dB，没哼声会伤低音",
+  "m5.mains": "市电频率 (mains)\n陷波落在 50 或 60Hz\n中国电网选 50；选错则陷在错误频率、等于无效",
+  "m5.declip": "削波重建 (declip)\n全频段削平波峰 Hermite 重建 0–1\n修削顶失真，重削波误差实测改善 12dB",
+  "m5.pump": "泵感控制 (pump)\n全带慢包络反向修正 0–1\n现场起伏明显时开；峰值最大 ±9dB 修正",
+  /* —— m1 参数 —— */
+  "m1.weight": "重量感 (weight)\n30–150Hz 静态提升，0–1\n补低频厚度、拉满 +11dB，过多会浑",
+  "m1.density": "密度 (density)\n40–250Hz 静态 + 向上压缩 0–1\n让中低频更致密；拉满 +8dB，过密会显挤",
+  "m1.sub": "次谐波 (sub)\n20–90Hz 相位减半合成 0–1\n相机录音缺超低时用；拉满 +5dB，多了会糊",
+  "m1.punch": "冲击力 (punch)\n100–700Hz 自适应瞬态 0–1\n让底鼓更有冲击；峰值帧 +9dB，镲片多会吵",
+  /* —— m2 参数 —— */
+  "m2.air": "空气感 (air)\n11–18kHz 包络外推 0–1\n补回高频空气感；拉满 +7dB，过量会刺",
+  "m2.detail": "细节 (detail)\n1.4–7kHz 相位加倍谐波 0–1\n给中高频加泛音细节；拉满 +3.5dB",
+  "m2.dehiss": "嘶声抑制 (dehiss)\n6–16kHz 贴底噪压制 0–1\n嘶声明显时开；峰值最多 −18dB，过高会闷",
+  "m2.ext_hz": "延伸到 (ext_hz)\n高频外推起点 4000–20000Hz\n对齐诊断出的截止频率；设得越高越激进",
+  /* —— m3 参数 —— */
+  "m3.clarity": "清晰度 (clarity)\n2.2–5kHz 动态提升 0–1\n人声被伴奏盖住时提存在感；拉满 +5dB",
+  "m3.room": "房间感 (room)\n200Hz–16kHz 晚期混响 0–1\n压现场残响让声音更干净；拉满 −5.6dB",
+  "m3.harsh": "刺耳控制 (harsh)\n2.2–5.5kHz 软压 0–1\n铜管 / 电吉他嘶叫时压；峰值 −6.6dB",
+  "m3.ess": "齿音控制 (ess)\n5.8–13kHz 动态下压 0–1\n压齿音，峰值 −8.7dB，过量会大舌头",
+  /* —— m4 参数 —— */
+  "m4.width_low": "低频宽度 (width_low)\n120Hz 以下侧信号 0–2 倍\n低频收窄才稳，推荐 0.1 附近避免发糊",
+  "m4.width_mid": "中频宽度 (width_mid)\n120–1200Hz 侧信号 0–2 倍\n1.0 原样；1.2–1.5 显开阔，过头会散",
+  "m4.width_high": "高频宽度 (width_high)\n1200Hz 以上侧信号 0–2 倍\n适度加宽显开阔；过宽高频发飘、易疲劳",
+  "m4.depth": "纵深 (depth)\n全频段 M 去相关后注入 S，0–1\n加前后景深与包围感；拉满约 +7dB",
+  "m4.rotation": "声像旋转 (rotation)\n全频段整体 M/S 旋转，±1\n约为 ±45°；声像偏左 / 偏右时反向校正",
+  /* —— m6 参数 —— */
+  "m6.target_lufs": "目标响度 (target_lufs)\n全频综合响度 −24..−8 LUFS\n对齐平台：流媒体 −14、视频 −16",
+  "m6.lra": "动态范围 (lra)\n全频短时起伏目标 1–20 LU\n小值平稳（广播），大值保留现场起伏",
+  "m6.ceiling": "峰值上限 (ceiling)\n全频段真峰限制器天花板 −6..0dBTP\n防转码后削波；平台通常要求 −1dBTP",
+  /* —— dyneq bands —— */
+  "dyneq.f": "频率 (f)\n动态处理中心 20–20000Hz\n选房间共振或最刺耳的那个频点下手",
+  "dyneq.q": "Q (q)\n作用带宽窄宽 0.2–8\n控制作用带宽；大 Q 窄而准、小 Q 宽而柔",
+  "dyneq.thr_db": "阈值 (thr_db)\n该频点触发电平 −60..0dB\n超过才启动压 / 补；实测 3kHz 带约 −32dB",
+  "dyneq.ratio": "Ratio (ratio)\n该频段动态强度 1–12\n越大压 / 补得越狠，up 模式则是补得越多",
+  "dyneq.mode": "Mode (mode)\n该频点处理模式三选一\n超标下压选 down，某频段偏弱补选 up",
+  /* —— 干湿比 9 行 —— */
+  "mix.sep": "源分离分级 · 干湿比 (sep.mix)\n全频段混合比 0–100%\n0=旁通、100=全量；修得过头时往下拉重算",
+  "mix.ai": "AI 重建 · 干湿比 (ai.mix)\nai 本期透传音频，干湿比无实际作用\n仅占位，等模型就绪后才有意义",
+  "mix.m5": "修复层 · 干湿比 (m5.mix)\n全频段干湿混合比 0–100%\n修得太狠时降到中间折中，改后需重算",
+  "mix.m1": "中低频重建 · 干湿比 (m1.mix)\n30–700Hz 混合 0–100%\n想听「修了多少」就拉到中间对比",
+  "mix.m2": "中高频补充 · 干湿比 (m2.mix)\n1.4–18kHz 混合 0–100%\n细节过量时降到 50–70% 折中",
+  "mix.m3": "人声优化 · 干湿比 (m3.mix)\n90Hz–13kHz 混合 0–100%\n处理太冲（如齿音过头）时下调混合",
+  "mix.m4": "声场扩展 · 干湿比 (m4.mix)\n全频段干湿混合比 0–100%\n宽度过大时只混合一部分，改后需重算",
+  "mix.m6": "母带终整 · 干湿比 (m6.mix)\n全频段干湿混合比 0–100%\nmix<100 会偏离目标响度，改后需重算",
+  "mix.dyneq": "动态均衡 · 干湿比 (dyneq.mix)\n全频段干湿混合比 0–100%\n0=旁通不计算、100=全量，改后需重算",
+  /* —— 调音台推子行（贡献量，无需重算） —— */
+  "mx.sep": "源分离分级 · 贡献量 (sep)\n推子=该模块贡献量音量 0–200%\n0=移除分离效果、200=放大；松手即混音不重算",
+  "mx.m5": "修复层 · 贡献量 (m5)\n贡献量音量 0–200%\n0=移除修复、噪点回来，便于对比；不重算",
+  "mx.m1": "中低频重建 · 贡献量 (m1)\n30–700Hz 贡献量 0–200%\n0=移除低频修复，便于 A/B 对比不重算",
+  "mx.m2": "中高频补充 · 贡献量 (m2)\n1.4–18kHz 贡献量 0–200%\n细节过量可降到 60%，不重算",
+  "mx.m3": "人声优化 · 贡献量 (m3)\n90Hz–13kHz 贡献量 0–200%\n0=移除人声处理，便于 A/B 对比不重算",
+  "mx.m4": "声场扩展 · 贡献量 (m4)\n全频段贡献量 0–200%\n0=移除声场处理，便于 A/B 对比；不重算",
+  "mx.m6": "母带终整 · 贡献量 (m6)\n贡献量音量 0–200%\n0=移除母带（响度会回落），便于对比不重算",
+  /* —— 区3 EQ 选中点控件 —— */
+  "eq.f": "频率 (f)\nEQ 作用中心 20–20000Hz\n在画布上拖圆点或用滑杆选点，实时可听",
+  "eq.q": "Q (q)\n作用带宽窄宽 0.2–8\n大 Q 窄（雕单点）、小 Q 宽而柔，实时生效",
+  "eq.gain": "增益 (gain_db)\n该频点静态增益 ±10dB\n正数为提升、负数为削减；导出时按此烘焙",
+  /* —— 导出区 —— */
+  "exp.ch": "声道 (channels)\n决定输出声道布局\n立体声 / 单声道 / 5.1；单喇叭或蓝牙出 mono",
+  "exp.bd": "位深 (bit_depth)\n只影响精度与兼容性，不改频段\n16 兼容好、24 余量大、32f 无损",
+  "exp.loud": "响度归一 (loudnorm)\n按全频综合响度对齐（LUFS）\n导出时再校准一次，严格对齐投放平台",
+  /* —— 进度条 / ETA —— */
+  "prog.stage": "当前阶段 (stage)\n整链九段依次执行\n这里显示正在做的环节（sep → ai → … → dyneq）",
+  "prog.eta": "预计剩余 (eta_s)\n按各处理阶段成本模型估算\n刚开始未稳定时显示「估算中…」，完成归零",
+  "prog.sstage": "阶段内进度 (stage_frac)\n当前阶段内部的完成百分比\n小条=当前阶段内进度、大条=全链总进度",
+};
+
+/* 文案渲染：首行加粗浅蓝，其余为正文。
+   data-tip 挂的是**键名**（如 m1.weight），必须查 TIPS 表取正文 ——
+   旧版直接把键名当内容渲染，于是所有解释框只显示 "m1.weight" 这种字样。 */
+function tipHTML(raw) {
+  const lines = String(raw).split("\n");
+  return `<span class="tip-h">${esc(lines[0])}</span>${esc(lines.slice(1).join("\n"))}`;
+}
+function tipTextFor(el) {
+  const key = el.getAttribute("data-tip") || "";
+  return TIPS[key] || key;                 // 表里没有就退化显示键名，至少不空白
+}
+/* 定位：默认标题正下方；底部放不下翻上方；左右 clamp 进视口（不覆盖标题） */
+function placeTip() {
+  if (!tipTarget) return;
+  const r = tipTarget.getBoundingClientRect();
+  const h = tipDiv.offsetHeight, w = tipDiv.offsetWidth;
+  let top = r.bottom + 6;
+  if (top + h + 8 > window.innerHeight) top = r.top - h - 6;
+  top = Math.max(8, Math.min(top, window.innerHeight - h - 8));
+  const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+  tipDiv.style.top = top + "px";
+  tipDiv.style.left = left + "px";
+}
+function tipShow(el) {
+  clearTimeout(tipHideT); clearTimeout(tipFadeT); tipHideT = tipFadeT = 0;
+  tipTarget = el;
+  tipDiv.innerHTML = tipHTML(tipTextFor(el));
+  tipDiv.style.display = "block";
+  tipDiv.style.transition = "none";
+  tipDiv.style.opacity = "0";
+  placeTip();                             // 先定位（measure），再浮现
+  requestAnimationFrame(() => {           // 浮现：opacity 0→1 / 100ms
+    tipDiv.style.transition = "opacity .1s";
+    tipDiv.style.opacity = "1";
+  });
+  tipVisible = true;
+}
+/* 移开即渐隐：不留宽限延时，立刻开始 120ms 淡出（淡出途中移回可拉回，不闪断） */
+function tipLeave(el) {
+  clearTimeout(tipShowT); tipShowT = 0;   // 300ms 内移开 → 不显示
+  if (tipTarget !== el) return;
+  if (!tipVisible) { tipTarget = null; return; }
+  clearTimeout(tipHideT); tipHideT = 0;
+  tipDiv.style.transition = "opacity .12s";
+  tipDiv.style.opacity = "0";
+  clearTimeout(tipFadeT);
+  tipFadeT = setTimeout(() => {           // 120ms 完成 → display:none
+    tipFadeT = 0;
+    tipDiv.style.display = "none";
+    tipVisible = false;
+    tipTarget = null;
+  }, 120);
+}
+/* 事件委托：document 上 pointerover / pointerout，动态控件免重绑 */
+document.addEventListener("pointerover", e => {
+  const el = e.target && e.target.closest ? e.target.closest("[data-tip]") : null;
+  if (!el) return;
+  if (el === tipTarget) {                  // 宽限内移回同一标题：取消隐藏、不重播
+    if (tipHideT) { clearTimeout(tipHideT); tipHideT = 0; }
+    if (tipFadeT) {                        // 渐隐途中移回：拉回显示
+      clearTimeout(tipFadeT); tipFadeT = 0;
+      tipDiv.style.transition = "opacity .1s";
+      tipDiv.style.opacity = "1";
+      tipVisible = true;
+    }
+    return;
+  }
+  if (tipTarget) tipLeave(tipTarget);      // 目标切换：先走旧目标 leave 流程
+  clearTimeout(tipShowT);
+  tipShowT = setTimeout(() => { tipShowT = 0; tipShow(el); }, 300);   // 300ms 后浮现
+});
+document.addEventListener("pointerout", e => {
+  const el = e.target && e.target.closest ? e.target.closest("[data-tip]") : null;
+  if (!el || el !== tipTarget) return;
+  const rel = e.relatedTarget;
+  if (rel && el.contains(rel)) return;     // 仍在同一标题内部移动，不算离开
+  tipLeave(el);
+});
+/* 可见期间 scroll / resize 跟随目标重定位（rAF 节流） */
+let tipPlaceQ = 0;
+function tipRepos() {
+  if (!tipVisible || !tipTarget) return;
+  if (tipPlaceQ) return;
+  tipPlaceQ = requestAnimationFrame(() => { tipPlaceQ = 0; placeTip(); });
+}
+window.addEventListener("scroll", tipRepos, { passive: true });
+window.addEventListener("resize", tipRepos);
+
 /* ---------------- 工具 ---------------- */
 function deepMerge(base, over) {           // 把 suggest 增量深合并进 config
   for (const k in over) {
@@ -568,19 +767,20 @@ function moduleCard(key, i) {
   el.className = "mod" + (m.on ? "" : " off");
   const swId = "sw_" + key;
   let html = `<div class="mod-h">
-      <span class="nm">${def.name}</span><span class="key">${key}</span>
+      <span class="nm" data-tip="mod.${key}">${def.name}</span><span class="key">${key}</span>
       ${key === "ai" ? '<span class="badge">接口已预留 · 模型待实现</span>' : ""}
       <label class="sw" title="启用 / 停用"><input type="checkbox" id="${swId}" ${m.on ? "checked" : ""}><span class="tk"></span></label>
     </div>
     <div class="algo">${def.algo}</div>`;
   for (const p of def.params) {
     const v = m[p.k];
+    const tipA = ` data-tip="${key}.${p.k}"`;
     if (p.type === "select") {
-      html += `<div class="prow sel"><span class="pl">${p.label}</span>
+      html += `<div class="prow sel"><span class="pl"${tipA}>${p.label}</span>
         <select data-k="${p.k}" ${p.disabled ? "disabled" : ""}>${p.opts.map(([ov, ot]) =>
           `<option value="${ov}" ${String(ov) === String(v) ? "selected" : ""}>${ot}</option>`).join("")}</select></div>`;
     } else {
-      html += `<div class="prow"><span class="pl">${p.label}</span>
+      html += `<div class="prow"><span class="pl"${tipA}>${p.label}</span>
         <input type="range" data-k="${p.k}" min="${p.min}" max="${p.max}" step="${p.step}" value="${v}" ${p.disabled ? "disabled" : ""}>
         <span class="pv">${fmt(v, p.dec)}${p.unit ? " " + p.unit : ""}</span></div>`;
     }
@@ -888,9 +1088,9 @@ function renderEqCtl() {
   const b = liveEqBands[selBand];
   if (!b) { form.innerHTML = '<div class="eqnone">双击画布添加频段，或点击已有圆点进行编辑。</div>'; return; }
   form.innerHTML = `<div class="eqform" style="grid-template-columns:1fr 1fr 1fr auto">
-    <div class="f"><label>频率 Hz</label><div class="row"><input type="range" data-bk="f" min="20" max="20000" step="10" value="${b.f}"><span class="num">${b.f >= 1000 ? (b.f / 1000).toFixed(1) + "k" : b.f}</span></div></div>
-    <div class="f"><label>Q</label><div class="row"><input type="range" data-bk="q" min="0.2" max="8" step="0.1" value="${b.q}"><span class="num">${b.q.toFixed(1)}</span></div></div>
-    <div class="f"><label>增益 dB</label><div class="row"><input type="range" data-bk="gain_db" min="-10" max="10" step="0.1" value="${b.gain_db}"><span class="num">${b.gain_db.toFixed(1)}</span></div></div>
+    <div class="f"><label data-tip="eq.f">频率 Hz</label><div class="row"><input type="range" data-bk="f" min="20" max="20000" step="10" value="${b.f}"><span class="num">${b.f >= 1000 ? (b.f / 1000).toFixed(1) + "k" : b.f}</span></div></div>
+    <div class="f"><label data-tip="eq.q">Q</label><div class="row"><input type="range" data-bk="q" min="0.2" max="8" step="0.1" value="${b.q}"><span class="num">${b.q.toFixed(1)}</span></div></div>
+    <div class="f"><label data-tip="eq.gain">增益 dB</label><div class="row"><input type="range" data-bk="gain_db" min="-10" max="10" step="0.1" value="${b.gain_db}"><span class="num">${b.gain_db.toFixed(1)}</span></div></div>
     <div class="f"><label>&nbsp;</label><button class="danger" onclick="delBand()">删除</button></div>
   </div>`;
   form.querySelectorAll("input[type=range]").forEach(inp => {
@@ -927,7 +1127,7 @@ function dyneqChainCard() {
   const m = mod("dyneq");
   el.className = "mod" + (m.on ? "" : " off");
   el.innerHTML = `<div class="mod-h">
-      <span class="nm">动态均衡</span><span class="key">dyneq</span>
+      <span class="nm" data-tip="mod.dyneq">动态均衡</span><span class="key">dyneq</span>
       <span class="badge last">最后一步</span>
       <label class="sw"><input type="checkbox" id="sw_dyneq" ${m.on ? "checked" : ""}><span class="tk"></span></label>
     </div>
@@ -958,11 +1158,11 @@ function renderDyneqCtl(card) {
   const b = bs[dcSel];
   if (!b) { form.innerHTML = '<div class="eqnone">选择频段或点「加点」。</div>'; return; }
   form.innerHTML = `<div class="eqform" style="grid-template-columns:repeat(6,1fr)">
-    <div class="f"><label>频率 Hz</label><div class="row"><input type="range" data-bk="f" min="20" max="20000" step="10" value="${b.f}"><span class="num">${b.f >= 1000 ? (b.f / 1000).toFixed(1) + "k" : b.f}</span></div></div>
-    <div class="f"><label>Q</label><div class="row"><input type="range" data-bk="q" min="0.2" max="8" step="0.1" value="${b.q}"><span class="num">${b.q.toFixed(1)}</span></div></div>
-    <div class="f"><label>阈值 dB</label><div class="row"><input type="range" data-bk="thr_db" min="-60" max="0" step="1" value="${b.thr_db}"><span class="num">${b.thr_db.toFixed(0)}</span></div></div>
-    <div class="f"><label>Ratio</label><div class="row"><input type="range" data-bk="ratio" min="1" max="12" step="0.5" value="${b.ratio}"><span class="num">${b.ratio.toFixed(1)}</span></div></div>
-    <div class="f"><label>Mode</label><select data-bk="mode">
+    <div class="f"><label data-tip="dyneq.f">频率 Hz</label><div class="row"><input type="range" data-bk="f" min="20" max="20000" step="10" value="${b.f}"><span class="num">${b.f >= 1000 ? (b.f / 1000).toFixed(1) + "k" : b.f}</span></div></div>
+    <div class="f"><label data-tip="dyneq.q">Q</label><div class="row"><input type="range" data-bk="q" min="0.2" max="8" step="0.1" value="${b.q}"><span class="num">${b.q.toFixed(1)}</span></div></div>
+    <div class="f"><label data-tip="dyneq.thr_db">阈值 dB</label><div class="row"><input type="range" data-bk="thr_db" min="-60" max="0" step="1" value="${b.thr_db}"><span class="num">${b.thr_db.toFixed(0)}</span></div></div>
+    <div class="f"><label data-tip="dyneq.ratio">Ratio</label><div class="row"><input type="range" data-bk="ratio" min="1" max="12" step="0.5" value="${b.ratio}"><span class="num">${b.ratio.toFixed(1)}</span></div></div>
+    <div class="f"><label data-tip="dyneq.mode">Mode</label><select data-bk="mode">
       <option value="static" ${b.mode === "static" ? "selected" : ""}>static</option>
       <option value="up" ${b.mode === "up" ? "selected" : ""}>up</option>
       <option value="down" ${b.mode === "down" ? "selected" : ""}>down</option></select></div>
@@ -1205,7 +1405,7 @@ function renderMix() {
     const v = Math.round(mod(k).mix != null ? mod(k).mix : 100);
     const dis = k === "ai" ? " disabled" : "";
     return `<div class="mixrow${k === "ai" ? " dis" : ""}">
-      <span class="mn">${MODS[k].name}</span>
+      <span class="mn" data-tip="mix.${k}">${MODS[k].name}</span>
       <span class="mv" id="mixv_${k}">${v}%</span>
       <input type="range" min="0" max="100" step="1" value="${v}" data-mix="${k}"${dis}>
     </div>`;
@@ -1652,7 +1852,7 @@ function renderMixer(d) {
   host.innerHTML = mx.keys.map(k => {
     const v = Math.round((state.gains[k] != null ? state.gains[k] : 1) * 100);
     return `<div class="mixerrow">
-      <span class="mn">${MODS[k] ? MODS[k].name : k}</span>
+      <span class="mn" data-tip="mx.${k}">${MODS[k] ? MODS[k].name : k}</span>
       <input type="range" min="0" max="200" step="1" value="${v}" data-gain="${k}">
       <span class="mv" id="gv_${k}">${v}%</span>
     </div>`;

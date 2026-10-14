@@ -503,16 +503,44 @@ function hideBanner() { document.getElementById("banner").style.display = "none"
 
 /* =========================================================
    参数悬浮解释框（单例 #tip · 事件委托）
-   时序：enter→TIP_SHOW_DELAY(0.5s) 悬停意图→浮现(.1s)；leave→**立刻**渐隐(.12s)→display:none
-        宽限内移回同一目标 → 取消淡出并拉回，不重播；淡入途中移开 → 反向淡出
+   时序：enter→TIP_SHOW_DELAY(0.5s) 悬停意图→浮现(.1s)；leave→200ms 宽限→渐隐(.15s)→display:none
+        宽限/淡出途中移回**同一 key** 的目标 → 取消隐藏并拉回，不重播
    命中区：参数名 / 参数数值 / 模块标题 / key 徽标 / EQ·dyneq 字段名，都带悬停高亮
    内容：TIPS 表按「参数名(key) + 频段·操作 + 目的·效果」三段，正文约 40 字
+
+   ⚠ 反向检测（2026-10-14 加）：pointerover/pointerout 会漏事件，导致鼠标早已不在
+     任何小标题上、解释框却一直留着。实测的漏事件来源：
+       1. 悬停中卡片被 renderChain() 重建 → 被悬停的节点已脱离文档，pointerout 不再触发，
+          tipTarget 指向游离节点（getBoundingClientRect 全 0），框子卡在左上角不走；
+       2. 鼠标快速移出窗口 / Alt+Tab 切走 / 在滚动容器里滚动 → 内容从指针下移走但没有 out；
+       3. 指针移到了「非 data-tip」元素上：pointerover 里 `if (!el) return` 直接返回，
+          若此前那次 pointerout 丢了，就没人负责收尾。
+     因此除了补齐上述分支，另加**心跳核对**：记录指针坐标，每 300ms 用
+     document.elementFromPoint 反查指针下方真正是什么，与当前目标不一致就立刻收起。
+     目标比较用 **data-tip 键**而非元素：参数名与参数数值是两个相邻元素但同属一个参数，
+     按键比较后它们之间的移动不再算「切换」，宽限期也就不再需要为这种抖动兜底。
    ========================================================= */
 const tipDiv = document.getElementById("tip");
-const TIP_SHOW_DELAY = 500;   // 悬停意图判定：停留 0.5s 才浮现（扫过时不弹）
-let tipTarget = null;      // 当前关联的标题元素（scroll/resize 跟随用）
+const TIP_SHOW_DELAY = 500;     // 悬停意图判定：停留 0.5s 才浮现（扫过时不弹）
+const TIP_GRACE = 200;          // 移开后的宽限：期间移回同一 key 不隐藏
+const TIP_POLL = 300;           // 反向检测心跳间隔（ms）
+let tipTarget = null;           // 当前显示的标题元素（定位/跟随用）
+let tipKey = null;              // 当前目标的 data-tip 键（比较用，见上）
 let tipShowT = 0, tipHideT = 0, tipFadeT = 0;
 let tipVisible = false;
+let tipX = -1, tipY = -1;       // 最后一次指针位置（反向检测用）
+let tipQ = 0;                   // rAF 去重
+
+function tipKeyOf(el) {
+  return el && el.getAttribute ? el.getAttribute("data-tip") : null;
+}
+/* 指针位置下方的 data-tip 目标（反向检测的唯一真源） */
+function tipUnderPointer() {
+  if (tipX < 0 || tipY < 0) return null;
+  const under = document.elementFromPoint(tipX, tipY);
+  if (!under || !under.closest) return null;
+  return under.closest("[data-tip]");
+}
 
 /* 内容表：首行「参数名 (key)」＋ 第二行「频段 · 操作方式」＋ 第三行「目的 · 预估效果」
    整框正文控制在 40 字左右（第二、三行合计），效果数字取自 _range_audit.py 实测。 */
@@ -619,10 +647,13 @@ function tipTextFor(el) {
   const key = el.getAttribute("data-tip") || "";
   return TIPS[key] || key;                 // 表里没有就退化显示键名，至少不空白
 }
-/* 定位：默认标题正下方；底部放不下翻上方；左右 clamp 进视口（不覆盖标题） */
+/* 定位：默认标题正下方；底部放不下翻上方；左右 clamp 进视口（不覆盖标题）
+   目标已脱离文档或尺寸塌成 0（卡片被重建过）→ 直接收起，绝不把框子留在 (0,0) */
 function placeTip() {
-  if (!tipTarget) return;
+  if (!tipTarget) return false;
+  if (!tipTarget.isConnected) { tipHideNow(); return false; }
   const r = tipTarget.getBoundingClientRect();
+  if (r.width === 0 && r.height === 0) { tipHideNow(); return false; }
   const h = tipDiv.offsetHeight, w = tipDiv.offsetWidth;
   let top = r.bottom + 6;
   if (top + h + 8 > window.innerHeight) top = r.top - h - 6;
@@ -630,72 +661,153 @@ function placeTip() {
   const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
   tipDiv.style.top = top + "px";
   tipDiv.style.left = left + "px";
+  return true;
 }
 function tipShow(el) {
   clearTimeout(tipHideT); clearTimeout(tipFadeT); tipHideT = tipFadeT = 0;
   tipTarget = el;
+  tipKey = tipKeyOf(el);
   tipDiv.innerHTML = tipHTML(tipTextFor(el));
   tipDiv.style.display = "block";
   tipDiv.style.transition = "none";
   tipDiv.style.opacity = "0";
-  placeTip();                             // 先定位（measure），再浮现
+  if (!placeTip()) return;                // 游离节点/零尺寸：placeTip 内部已收起
   void tipDiv.offsetHeight;               // 强制 reflow 提交 0 起点（不依赖 rAF，防节流窗口下卡 0）
   tipDiv.style.transition = "opacity .1s";  // 浮现：opacity 0→1 / 100ms
   tipDiv.style.opacity = "1";
   tipVisible = true;
 }
-/* mouseleave → 200ms 宽限；到期仍未移回 → 渐隐 150ms → display:none
-   宽限/淡出途中移回同一标题 → 取消隐藏（保持显示，不重播浮现动画） */
+/* 立刻收起（不走宽限）：用于反向检测判定「鼠标确实不在目标上」、点击、失焦、目标游离 */
+function tipHideNow() {
+  clearTimeout(tipShowT); tipShowT = 0;
+  clearTimeout(tipHideT); tipHideT = 0;
+  clearTimeout(tipFadeT); tipFadeT = 0;
+  if (tipVisible) {
+    tipDiv.style.transition = "opacity .12s";
+    tipDiv.style.opacity = "0";
+  }
+  tipDiv.style.display = "none";
+  tipVisible = false;
+  tipTarget = null;
+  tipKey = null;
+}
+/* mouseleave → TIP_GRACE 宽限；到期仍未移回同一 key → 渐隐 150ms → display:none
+   宽限/淡出途中移回同一 key 的目标 → 取消隐藏（保持显示，不重播浮现动画）
+   ⚠ 元素被捕获在闭包里：宽限期间可能已经切到别的目标，此时本次宽限作废（由新目标接管） */
 function tipLeave(el) {
   clearTimeout(tipShowT); tipShowT = 0;   // 未满 0.5s 就移开 → 不显示
   if (tipTarget !== el) return;
-  if (!tipVisible) { tipTarget = null; return; }
+  if (!tipVisible) { tipTarget = null; tipKey = null; return; }
   if (tipHideT) return;                   // 宽限已在计时
-  tipHideT = setTimeout(() => {           // 200ms 宽限到期 → 渐隐
+  const tgt = el;
+  tipHideT = setTimeout(() => {           // 宽限到期 → 渐隐
     tipHideT = 0;
+    if (tipTarget !== tgt) return;        // 已换目标：交给新目标，不在这里淡出
+    if (!tgt.isConnected) { tipHideNow(); return; }   // 卡片被重建 → 直接收起
     tipDiv.style.transition = "opacity .15s";
     tipDiv.style.opacity = "0";           // 淡入途中移开也在此自然反向，不闪断
-    tipFadeT = setTimeout(() => {         // 150ms 完成 → display:none
+    tipFadeT = setTimeout(() => {         // 完成 → display:none
       tipFadeT = 0;
+      if (tipTarget !== tgt) return;
       tipDiv.style.display = "none";
       tipVisible = false;
       tipTarget = null;
+      tipKey = null;
     }, 150);
-  }, 200);
+  }, TIP_GRACE);
 }
-/* 事件委托：document 上 pointerover / pointerout，动态控件免重绑 */
-document.addEventListener("pointerover", e => {
-  const el = e.target && e.target.closest ? e.target.closest("[data-tip]") : null;
-  if (!el) return;
-  if (el === tipTarget) {                  // 宽限内移回同一标题：取消隐藏、不重播
-    if (tipHideT) { clearTimeout(tipHideT); tipHideT = 0; }
-    if (tipFadeT) {                        // 渐隐途中移回：拉回显示
-      clearTimeout(tipFadeT); tipFadeT = 0;
-      tipDiv.style.transition = "opacity .1s";
-      tipDiv.style.opacity = "1";
-      tipVisible = true;
-    }
-    return;
+/* 取消进行中的隐藏（移回同一 key 的目标时调用） */
+function tipCancelHide() {
+  clearTimeout(tipHideT); tipHideT = 0;
+  if (tipFadeT) {                         // 渐隐途中移回：拉回显示
+    clearTimeout(tipFadeT); tipFadeT = 0;
+    tipDiv.style.transition = "opacity .1s";
+    tipDiv.style.opacity = "1";
+    tipVisible = true;
   }
-  if (tipTarget) tipLeave(tipTarget);      // 目标切换：先走旧目标 leave 流程
+}
+/* 悬停意图：停留 TIP_SHOW_DELAY 才浮现 */
+function tipSchedule(el) {
   clearTimeout(tipShowT);
   tipShowT = setTimeout(() => { tipShowT = 0; tipShow(el); }, TIP_SHOW_DELAY);
+}
+
+/* ---------------- 反向检测（心跳）：核对指针下方到底是不是当前目标 ----------------
+   不依赖 pointerout 是否送达；宽限已在跑时不插手，只在「真的卡住」时强制收起 */
+function tipReconcile() {
+  // 页面不可见（切标签页/最小化）：指针与几何都不可信，不做判定 —— 收起由 visibilitychange 负责。
+  // ⚠ 不要在这里 tipHideNow()：无头浏览器可能长期处于 hidden，那会让心跳每 300ms 把框子清掉。
+  if (document.hidden) return;
+  if (tipTarget && !tipTarget.isConnected) { tipHideNow(); return; }   // 目标已脱离文档
+  const under = tipUnderPointer();
+  const k = tipKeyOf(under);
+  if (k && k === tipKey) {                                 // 指针仍在当前目标上
+    if (!tipVisible && !tipShowT && !tipHideT && !tipFadeT) tipShow(under);   // 显示丢了→补回
+    return;
+  }
+  if (!k) {                                                // 指针下方没有任何 data-tip
+    if (tipVisible && !tipHideT && !tipFadeT) tipHideNow();                   // 无宽限在跑 = 卡住
+    else if (!tipVisible && tipShowT) { clearTimeout(tipShowT); tipShowT = 0; }
+    return;
+  }
+  if (!tipShowT && !tipHideT && !tipFadeT) {               // 指针已在别的目标上 → 正常切换
+    if (tipVisible) tipHideNow();
+    tipSchedule(under);
+  }
+}
+function tipReconcileSoon() {
+  if (tipQ) return;
+  tipQ = requestAnimationFrame(() => { tipQ = 0; tipReconcile(); });
+}
+
+/* 事件委托：document 上 pointerover / pointerout，动态控件免重绑 */
+document.addEventListener("pointermove", e => {
+  tipX = e.clientX; tipY = e.clientY;
+  if (tipVisible || tipShowT) tipReconcileSoon();     // 移动时即时核对，不等心跳
+}, { passive: true });
+document.addEventListener("pointerover", e => {
+  const el = e.target && e.target.closest ? e.target.closest("[data-tip]") : null;
+  if (!el) { tipReconcileSoon(); return; }   // 非命中区：交给反向检测判定（宽限在跑则不插手）
+  const k = tipKeyOf(el);
+  if (k === tipKey) {                        // 同一参数的相邻命中区（参数名↔数值）：不算切换
+    tipTarget = el;                          // 位置跟随新元素（两者同位，仅保险）
+    tipCancelHide();
+    return;
+  }
+  if (tipTarget) tipLeave(tipTarget);        // 换目标：旧目标走 leave（宽限内可被新目标接管）
+  clearTimeout(tipShowT);
+  tipSchedule(el);
 });
 document.addEventListener("pointerout", e => {
   const el = e.target && e.target.closest ? e.target.closest("[data-tip]") : null;
-  if (!el || el !== tipTarget) return;
+  if (!el) return;
+  if (tipKeyOf(el) !== tipKey) return;       // 严格按 key 判定，避免名字/数值互换时误判
   const rel = e.relatedTarget;
-  if (rel && el.contains(rel)) return;     // 仍在同一标题内部移动，不算离开
+  if (rel && el.contains(rel)) return;       // 仍在同一标题内部移动，不算离开
+  const relTip = rel && rel.closest ? rel.closest("[data-tip]") : null;
+  if (tipKeyOf(relTip) === tipKey) return;   // 移到同一 key 的另一个命中区：保持显示
   tipLeave(el);
 });
-/* 可见期间 scroll / resize 跟随目标重定位（rAF 节流） */
+/* 点击 / 失焦 / 切标签页：这些场景都不会再收到 pointerout，一律收起 */
+document.addEventListener("pointerdown", () => { if (tipVisible || tipShowT) tipHideNow(); }, true);
+window.addEventListener("blur", () => tipHideNow());
+document.addEventListener("visibilitychange", () => { if (document.hidden) tipHideNow(); });
+
+/* 心跳：鼠标不动（卡片被重建、内容滚动移走）也能被发现并收起 */
+setInterval(tipReconcile, TIP_POLL);
+
+/* 可见期间 scroll / resize 跟随目标重定位（rAF 节流）；滚动后内容可能已移走 → 顺带核对 */
 let tipPlaceQ = 0;
 function tipRepos() {
   if (!tipVisible || !tipTarget) return;
   if (tipPlaceQ) return;
-  tipPlaceQ = requestAnimationFrame(() => { tipPlaceQ = 0; placeTip(); });
+  tipPlaceQ = requestAnimationFrame(() => {
+    tipPlaceQ = 0;
+    if (tipVisible && tipTarget && !placeTip()) return;   // 目标游离 → placeTip 内已收起
+    tipReconcile();
+  });
 }
-window.addEventListener("scroll", tipRepos, { passive: true });
+window.addEventListener("scroll", tipRepos, { passive: true, capture: true });
 window.addEventListener("resize", tipRepos);
 
 /* ---------------- 工具 ---------------- */

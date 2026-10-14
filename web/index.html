@@ -83,8 +83,13 @@ label.ck input{accent-color:var(--blue); width:15px; height:15px;}
   position:relative;}
 .mod.off{opacity:.62;}
 .mod-h{display:flex; align-items:center; gap:10px; margin-bottom:4px;}
-.mod-h .nm{font-weight:700; font-size:15px;}
-.mod-h .key{font-size:11px; color:var(--muted); background:var(--paper); border-radius:5px; padding:1px 7px;}
+/* 模块标题与 key 徽标都作为解释框的命中区，并给出手型提示与悬停高亮 */
+.mod-h .nm{font-weight:700; font-size:15px; cursor:help; padding:2px 4px; margin:-2px -4px;
+  border-radius:5px; transition:background .12s, color .12s;}
+.mod-h .nm:hover{background:var(--lighter);}
+.mod-h .key{font-size:11px; color:var(--muted); background:var(--paper); border-radius:5px;
+  padding:1px 7px; cursor:help; transition:background .12s, color .12s;}
+.mod-h .key:hover{background:var(--lighter); color:var(--blue);}
 .mod-h .badge{font-size:11px; color:var(--blue); background:var(--lighter); border-radius:5px; padding:1px 8px;}
 .mod-h .badge.last{background:var(--ink); color:#fff;}
 .algo{font-size:11.5px; color:var(--muted); margin-bottom:10px;}
@@ -98,8 +103,16 @@ label.ck input{accent-color:var(--blue); width:15px; height:15px;}
 .sw input:checked + .tk::after{left:21px;}
 /* 参数行 */
 .prow{display:grid; grid-template-columns:88px 1fr 62px; align-items:center; gap:10px; margin-bottom:5px;}
-.prow .pl{font-size:12.5px; color:var(--muted);}
-.prow .pv{font-size:12.5px; text-align:right; font-variant-numeric:tabular-nums; color:var(--ink);}
+/* 小标题（参数名）：命中区扩到整个标签格 + 上下留白，且悬停高亮让热区可见
+   （负 margin 抵消 padding，视觉位置与行距不变） */
+.prow .pl{font-size:12.5px; color:var(--muted); display:block; cursor:help;
+  padding:4px 6px; margin:-4px -6px; border-radius:5px;
+  transition:background .12s, color .12s;}
+.prow .pl:hover{background:var(--lighter); color:var(--ink);}
+.prow .pv{font-size:12.5px; text-align:right; font-variant-numeric:tabular-nums; color:var(--ink);
+  cursor:help; border-radius:5px; padding:4px 4px; margin:-4px -4px;
+  transition:background .12s;}
+.prow .pv:hover{background:var(--lighter);}
 .prow.sel{grid-template-columns:88px 1fr;}
 .prow select{width:100%;}
 /* ---------- 动态 EQ 画布 ---------- */
@@ -113,7 +126,10 @@ label.ck input{accent-color:var(--blue); width:15px; height:15px;}
 .chip.sel{background:var(--blue); border-color:var(--blue); color:#fff;}
 .eqform{display:grid; grid-template-columns:repeat(6,1fr); gap:12px; align-items:end;}
 .eqform .f{display:flex; flex-direction:column; gap:4px;}
-.eqform .f label{font-size:11.5px; color:var(--muted);}
+.eqform .f label{font-size:11.5px; color:var(--muted); cursor:help; display:inline-block;
+  padding:2px 5px; margin:-2px -5px; border-radius:5px;
+  transition:background .12s, color .12s;}
+.eqform .f label:hover{background:var(--lighter); color:var(--ink);}
 .eqform .f .row{display:flex; align-items:center; gap:6px;}
 .eqform .f input[type=range]{width:100%;}
 .eqform .f .num{font-size:12px; font-variant-numeric:tabular-nums; min-width:38px; text-align:right;}
@@ -486,11 +502,13 @@ function hideBanner() { document.getElementById("banner").style.display = "none"
 
 /* =========================================================
    参数悬浮解释框（单例 #tip · 事件委托）
-   时序：enter→300ms 悬停意图→浮现(.1s)；leave→**立刻**渐隐(.12s)→display:none
+   时序：enter→TIP_SHOW_DELAY(0.5s) 悬停意图→浮现(.1s)；leave→**立刻**渐隐(.12s)→display:none
         宽限内移回同一目标 → 取消淡出并拉回，不重播；淡入途中移开 → 反向淡出
+   命中区：参数名 / 参数数值 / 模块标题 / key 徽标 / EQ·dyneq 字段名，都带悬停高亮
    内容：TIPS 表按「参数名(key) + 频段·操作 + 目的·效果」三段，正文约 40 字
    ========================================================= */
 const tipDiv = document.getElementById("tip");
+const TIP_SHOW_DELAY = 500;   // 悬停意图判定：停留 0.5s 才浮现（扫过时不弹）
 let tipTarget = null;      // 当前关联的标题元素（scroll/resize 跟随用）
 let tipShowT = 0, tipHideT = 0, tipFadeT = 0;
 let tipVisible = false;
@@ -619,27 +637,29 @@ function tipShow(el) {
   tipDiv.style.transition = "none";
   tipDiv.style.opacity = "0";
   placeTip();                             // 先定位（measure），再浮现
-  requestAnimationFrame(() => {           // 浮现：opacity 0→1 / 100ms
-    tipDiv.style.transition = "opacity .1s";
-    tipDiv.style.opacity = "1";
-  });
+  void tipDiv.offsetHeight;               // 强制 reflow 提交 0 起点（不依赖 rAF，防节流窗口下卡 0）
+  tipDiv.style.transition = "opacity .1s";  // 浮现：opacity 0→1 / 100ms
+  tipDiv.style.opacity = "1";
   tipVisible = true;
 }
-/* 移开即渐隐：不留宽限延时，立刻开始 120ms 淡出（淡出途中移回可拉回，不闪断） */
+/* mouseleave → 200ms 宽限；到期仍未移回 → 渐隐 150ms → display:none
+   宽限/淡出途中移回同一标题 → 取消隐藏（保持显示，不重播浮现动画） */
 function tipLeave(el) {
-  clearTimeout(tipShowT); tipShowT = 0;   // 300ms 内移开 → 不显示
+  clearTimeout(tipShowT); tipShowT = 0;   // 未满 0.5s 就移开 → 不显示
   if (tipTarget !== el) return;
   if (!tipVisible) { tipTarget = null; return; }
-  clearTimeout(tipHideT); tipHideT = 0;
-  tipDiv.style.transition = "opacity .12s";
-  tipDiv.style.opacity = "0";
-  clearTimeout(tipFadeT);
-  tipFadeT = setTimeout(() => {           // 120ms 完成 → display:none
-    tipFadeT = 0;
-    tipDiv.style.display = "none";
-    tipVisible = false;
-    tipTarget = null;
-  }, 120);
+  if (tipHideT) return;                   // 宽限已在计时
+  tipHideT = setTimeout(() => {           // 200ms 宽限到期 → 渐隐
+    tipHideT = 0;
+    tipDiv.style.transition = "opacity .15s";
+    tipDiv.style.opacity = "0";           // 淡入途中移开也在此自然反向，不闪断
+    tipFadeT = setTimeout(() => {         // 150ms 完成 → display:none
+      tipFadeT = 0;
+      tipDiv.style.display = "none";
+      tipVisible = false;
+      tipTarget = null;
+    }, 150);
+  }, 200);
 }
 /* 事件委托：document 上 pointerover / pointerout，动态控件免重绑 */
 document.addEventListener("pointerover", e => {
@@ -657,7 +677,7 @@ document.addEventListener("pointerover", e => {
   }
   if (tipTarget) tipLeave(tipTarget);      // 目标切换：先走旧目标 leave 流程
   clearTimeout(tipShowT);
-  tipShowT = setTimeout(() => { tipShowT = 0; tipShow(el); }, 300);   // 300ms 后浮现
+  tipShowT = setTimeout(() => { tipShowT = 0; tipShow(el); }, TIP_SHOW_DELAY);
 });
 document.addEventListener("pointerout", e => {
   const el = e.target && e.target.closest ? e.target.closest("[data-tip]") : null;
@@ -767,7 +787,7 @@ function moduleCard(key, i) {
   el.className = "mod" + (m.on ? "" : " off");
   const swId = "sw_" + key;
   let html = `<div class="mod-h">
-      <span class="nm" data-tip="mod.${key}">${def.name}</span><span class="key">${key}</span>
+      <span class="nm" data-tip="mod.${key}">${def.name}</span><span class="key" data-tip="mod.${key}">${key}</span>
       ${key === "ai" ? '<span class="badge">接口已预留 · 模型待实现</span>' : ""}
       <label class="sw" title="启用 / 停用"><input type="checkbox" id="${swId}" ${m.on ? "checked" : ""}><span class="tk"></span></label>
     </div>
@@ -782,7 +802,7 @@ function moduleCard(key, i) {
     } else {
       html += `<div class="prow"><span class="pl"${tipA}>${p.label}</span>
         <input type="range" data-k="${p.k}" min="${p.min}" max="${p.max}" step="${p.step}" value="${v}" ${p.disabled ? "disabled" : ""}>
-        <span class="pv">${fmt(v, p.dec)}${p.unit ? " " + p.unit : ""}</span></div>`;
+        <span class="pv"${tipA}>${fmt(v, p.dec)}${p.unit ? " " + p.unit : ""}</span></div>`;
     }
   }
   el.innerHTML = html;

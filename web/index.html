@@ -135,9 +135,7 @@ label.ck input{accent-color:var(--blue); width:15px; height:15px;}
 .eqform .f .num{font-size:12px; font-variant-numeric:tabular-nums; min-width:38px; text-align:right;}
 .eqform .f select{width:100%;}
 .eqnone{color:var(--muted); font-size:13px; padding:8px 0;}
-/* ---------- 预览 ---------- */
-.abrow{display:flex; align-items:center; gap:12px; margin:14px 0 10px; flex-wrap:wrap;}
-.abrow .lbl{font-size:12px; color:var(--muted);}
+/* ---------- 预览结果（现位于右侧「预览 · 实时曲线」面板内，按窄栏适配见 .pane.chart） ---------- */
 .metrics{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:16px 0;}
 table.stg{width:100%; border-collapse:collapse; font-size:13px;}
 table.stg th{text-align:left; font-size:12px; color:var(--muted); font-weight:600;
@@ -145,7 +143,10 @@ table.stg th{text-align:left; font-size:12px; color:var(--muted); font-weight:60
 table.stg td{padding:6px 8px; border-bottom:1px solid #F2EDE4; font-variant-numeric:tabular-nums;}
 table.stg td.on{color:var(--blue); font-weight:600;}
 table.stg td.off{color:var(--muted);}
-.bar{display:inline-block; height:6px; background:var(--mid); border-radius:3px; vertical-align:middle;}
+/* 耗时条：固定轨道宽度 + 百分比填充 —— 旧版写死 120px，在右侧窄栏会顶出面板 */
+.btrack{display:inline-block; width:54px; height:6px; background:#E4EDF8; border-radius:3px;
+  vertical-align:middle; margin-left:4px; overflow:hidden;}
+.btrack .bar{display:block; height:6px; background:var(--mid); border-radius:3px;}
 /* ---------- 导出 ---------- */
 .optrow{display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:14px;}
 .optrow .lb{font-size:13px; color:var(--muted);}
@@ -181,8 +182,21 @@ table.stg td.off{color:var(--muted);}
   padding:14px 16px; display:flex; flex-direction:column; min-height:0;}
 .pane-h{font-size:14px; font-weight:700; margin-bottom:10px; display:flex; align-items:baseline; gap:8px;}
 .pane-h .sub{font-size:11.5px; color:var(--muted); font-weight:400;}
-.pane.chart{flex:none; overflow:auto;}
-.pane.live{flex:1; overflow:auto;}
+/* 右侧两面板共分可视高度，各自内部滚动（整列不滚动，页面也不随之滚动） */
+.pane.chart{flex:1.35 1 0; min-height:0; overflow:auto;}
+.pane.live{flex:1 1 0; min-height:0; overflow:auto;}
+/* 右列窄（约 400px）：预览面板里的对比图/指标/阶段表按窄栏适配 */
+.pane.chart #specCanvas{height:170px;}
+.pane.chart #waveCanvas{height:44px; margin-top:6px;}
+.pane.chart .metrics{grid-template-columns:repeat(auto-fit, minmax(104px, 1fr)); gap:8px; margin:12px 0;}
+.pane.chart .mcard{padding:9px 11px;}
+.pane.chart .mcard .v{font-size:17px;}
+.pane.chart table.stg{font-size:11.5px;}
+.pane.chart table.stg th, .pane.chart table.stg td{padding:5px 5px;}
+.pane.chart table.stg th{white-space:nowrap;}
+.pane.chart table.stg td:last-child{white-space:nowrap; text-align:right;}
+/* 窄栏里「阶段」已够表意，隐藏冗余的 key 列，避免 5 列挤压 */
+.pane.chart table.stg th:nth-child(2), .pane.chart table.stg td:nth-child(2){display:none;}
 canvas.chart{width:100%; display:block; background:#FBF7F0; border:1px solid var(--line); border-radius:8px;}
 #specCanvas{height:190px;}
 #waveCanvas{height:48px; margin-top:6px;}
@@ -327,27 +341,9 @@ canvas.chart{width:100%; display:block; background:#FBF7F0; border:1px solid var
     </div>
   </section>
 
-  <!-- 5 预览 -->
+  <!-- 5 导出 -->
   <section class="sec">
-    <div class="sec-h"><div class="no">5</div><h2>预览</h2><span class="hint">单播放器 · A/B 切换保持播放位置</span></div>
-    <div class="card">
-      <div class="abrow" style="margin-top:0">
-        <span class="lbl">A/B：</span>
-        <button class="ghost" id="btnAB" disabled onclick="abSwitch()">A / B 切换</button>
-        <button class="ghost" id="btnABExit" style="display:none" onclick="abExit()">退出即时对比</button>
-        <span class="rownote" id="abNote" style="margin-top:0">未处理</span>
-        <span id="wtagHost"></span>
-      </div>
-      <audio id="auMain" controls preload="metadata" style="width:100%"></audio>
-      <!-- 即时 A/B 的原片音轨：与主轨同时播放，切换只调两路音量 -->
-      <audio id="auOrig" preload="metadata" style="display:none"></audio>
-      <div id="procBox" style="margin-top:16px"><div class="eqnone">处理完成后将在此显示频谱对比与阶段耗时。</div></div>
-    </div>
-  </section>
-
-  <!-- 6 导出 -->
-  <section class="sec">
-    <div class="sec-h"><div class="no">6</div><h2>导出</h2><span class="hint">渲染结果 + 烘焙实时 EQ + 调音台混音</span></div>
+    <div class="sec-h"><div class="no">5</div><h2>导出</h2><span class="hint">渲染结果 + 烘焙实时 EQ + 调音台混音</span></div>
     <div class="card">
       <div class="optrow"><span class="lb" data-tip="exp.ch">声道</span>
         <label class="radio"><input type="radio" name="ch" value="stereo"> stereo</label>
@@ -370,7 +366,7 @@ canvas.chart{width:100%; display:block; background:#FBF7F0; border:1px solid var
 
   <!-- 7 缓存 -->
   <section class="sec">
-    <div class="sec-h"><div class="no">7</div><h2>缓存</h2><span class="hint">cache/ 里的预览/原片/贡献量/转码产物 · 均可再生</span></div>
+    <div class="sec-h"><div class="no">6</div><h2>缓存</h2><span class="hint">cache/ 里的预览/原片/贡献量/转码产物 · 均可再生</span></div>
     <div class="card">
       <div id="cacheStat" class="rownote" style="margin-top:0">统计中…</div>
       <div class="cachebar" id="cacheBar"></div>
@@ -392,7 +388,7 @@ canvas.chart{width:100%; display:block; background:#FBF7F0; border:1px solid var
 
   <!-- 8 AI 模型 -->
   <section class="sec">
-    <div class="sec-h"><div class="no">8</div><h2>AI 模型</h2><span class="hint">接口已预留</span></div>
+    <div class="sec-h"><div class="no">7</div><h2>AI 模型</h2><span class="hint">接口已预留</span></div>
     <div class="card">
       <div class="airow">
         <select id="modelSel" onchange="onModelChange(this.value)"></select>
@@ -408,16 +404,16 @@ canvas.chart{width:100%; display:block; background:#FBF7F0; border:1px solid var
 </div><!-- /col1 -->
 
 <div class="col2">
-  <!-- 区2 · 实时音频动态曲线（右上，约 300px） -->
+  <!-- 区2 · 预览 + 实时曲线（右上，不滚动：内容溢出时仅本面板内部滚动） -->
   <div class="pane chart">
-    <div class="pane-h">实时曲线<span class="sub">Web Audio · 播放时刷新</span></div>
+    <div class="pane-h">预览 · 实时曲线<span class="sub">Web Audio 实时刷新 · A/B 切换保持播放位置</span></div>
     <canvas id="specCanvas" class="chart"></canvas>
     <canvas id="waveCanvas" class="chart"></canvas>
     <div class="chan-meta">
       <span id="scopeSrc">源：等待播放</span>
       <span id="scopeTime">0:00 / 0:00</span>
     </div>
-    <!-- 播放与切换控制条：全部绑定区1 的 auMain（单一真源，无第二个 audio） -->
+    <!-- 播放与切换控制条：全部绑定 auMain（单一真源，无第二个 audio） -->
     <div class="tp2row">
       <button class="ghost tpab" id="btnAB2" disabled onclick="abSwitch()">A / B 切换</button>
       <button class="ghost tpab" id="btnABExit2" style="display:none" onclick="abExit()">退出即时对比</button>
@@ -434,6 +430,11 @@ canvas.chart{width:100%; display:block; background:#FBF7F0; border:1px solid var
         <svg id="tpMuteIcon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18 6a9 9 0 0 1 0 12"/></svg>
       </button>
     </div>
+    <!-- 两条音轨都不可见：主轨 auMain 是唯一 transport 真源（由上面的播控条驱动），
+         原片轨 auOrig 供即时 A/B 与主轨同时播放，切换只调两路增益 -->
+    <audio id="auMain" preload="metadata" style="display:none"></audio>
+    <audio id="auOrig" preload="metadata" style="display:none"></audio>
+    <div id="procBox" style="margin-top:14px"><div class="eqnone">处理完成后将在此显示频谱对比与阶段耗时。</div></div>
   </div>
 
   <!-- 区3 · 实时处理（右下，可滚动） -->
@@ -1471,7 +1472,7 @@ function renderProc(d) {
         return `<tr><td>${MODS[s.key] ? MODS[s.key].name : s.key}</td><td>${s.key}</td>
         <td class="${s.on ? "on" : "off"}">${s.on ? "启用" : "停用"}${s.note ? " · " + s.note : ""}</td>
         <td>${typeof s.mix === "number" ? s.mix + "%" : "—"}</td>
-        <td>${s.ms} ms <span class="bar" style="width:${Math.max(3, 120 * s.ms / mx)}px"></span></td></tr>`;
+        <td>${s.ms} ms<span class="btrack"><span class="bar" style="width:${Math.max(4, 100 * s.ms / mx)}%"></span></span></td></tr>`;
       }).join("")}
     </tbody></table>`;
   drawSpec(d);
@@ -1492,30 +1493,23 @@ function updateScopeSrc() {
 const AB = { on: false, side: "a", ready: false, resyncs: 0, paused: false };
 
 function abNote(txt, cls) {
-  // 提示文案双写：区1 与区2 控制条始终一致
-  for (const id of ["abNote", "abNote2"]) {
-    const el = document.getElementById(id);
-    if (el) { el.textContent = txt; el.className = cls || "rownote"; }
-  }
+  // 提示文案只写一处：预览与播控已合并到右侧「预览 · 实时曲线」面板
+  const el = document.getElementById("abNote2");
+  if (el) { el.textContent = txt; el.className = cls || "rownote"; }
 }
 
-/* A/B 按钮群统一状态更新（区1 + 区2 两处，单一真源，避免文案漂移） */
+/* A/B 按钮群状态更新（单一控制条，与播控条同在右侧面板） */
 function updateAbUI() {
   const has = !!state.proc;
   const label = AB.on ? (AB.side === "a" ? "A/B 切换 → B" : "A/B 切换 → A") : "A / B 切换";
-  for (const id of ["btnAB", "btnAB2"]) {
-    const b = document.getElementById(id);
-    if (b) { b.disabled = !has; b.textContent = label; }
-  }
-  for (const id of ["btnABExit", "btnABExit2"]) {
-    const x = document.getElementById(id);
-    if (x) x.style.display = AB.on ? "inline-block" : "none";
-  }
-  const wtag = has && state.proc.windowed
-    ? `<span class="wtag">试听窗口 ${state.proc.window ? state.proc.window[1] : 90}s</span>` : "";
-  for (const id of ["wtagHost", "wtagHost2"]) {
-    const w = document.getElementById(id);
-    if (w) w.innerHTML = wtag;
+  const b = document.getElementById("btnAB2");
+  if (b) { b.disabled = !has; b.textContent = label; }
+  const x = document.getElementById("btnABExit2");
+  if (x) x.style.display = AB.on ? "inline-block" : "none";
+  const w = document.getElementById("wtagHost2");
+  if (w) {
+    w.innerHTML = has && state.proc.windowed
+      ? `<span class="wtag">试听窗口 ${state.proc.window ? state.proc.window[1] : 90}s</span>` : "";
   }
 }
 
@@ -1912,28 +1906,29 @@ async function doRemix() {
 
 /* before/after 频谱对比 SVG：96 点、横轴对数 30–16k、纵轴 -60..0dB */
 function drawSpec(d) {
-  const W = 960, H = 250, L = 46, R = 14, T = 12, B = 26;
+  // 尺寸按右侧窄面板（约 400px）标定：viewBox 宽 460 → 实际渲染约 0.85 倍，11px 字号仍清晰
+  const W = 460, H = 210, L = 38, R = 10, T = 10, B = 22;
   const N = (d.spec_before || []).length || 96;
   const px = i => L + (W - L - R) * i / (N - 1);
   const py = db => T + (H - T - B) * (0 - clamp(db, -60, 0)) / 60;
   const fLbl = f => f >= 1000 ? (f / 1000) + "k" : f;
   let grid = "";
-  for (let db = 0; db >= -60; db -= 15)
+  for (const db of [0, -20, -40, -60])
     grid += `<line x1="${L}" y1="${py(db)}" x2="${W - R}" y2="${py(db)}" stroke="#EEF3FA"/>
-             <text x="${L - 6}" y="${py(db) + 4}" text-anchor="end" font-size="10" fill="#5C6B8C">${db}</text>`;
+             <text x="${L - 5}" y="${py(db) + 3.5}" text-anchor="end" font-size="9" fill="#5C6B8C">${db}</text>`;
   const F0 = 30, F1 = 16000;
-  for (const f of [50, 100, 500, 1000, 5000, 10000]) {
+  for (const f of [100, 1000, 10000]) {
     const x = L + (W - L - R) * Math.log(f / F0) / Math.log(F1 / F0);
     grid += `<line x1="${x}" y1="${T}" x2="${x}" y2="${H - B}" stroke="#F4F0E7"/>
-             <text x="${x}" y="${H - 8}" text-anchor="middle" font-size="10" fill="#5C6B8C">${fLbl(f)}</text>`;
+             <text x="${x}" y="${H - 7}" text-anchor="middle" font-size="9" fill="#5C6B8C">${fLbl(f)}</text>`;
   }
   const line = (arr, color, wid) =>
     `<polyline fill="none" stroke="${color}" stroke-width="${wid}" points="${arr.map((v, i) => px(i).toFixed(1) + "," + py(v).toFixed(1)).join(" ")}"/>`;
   document.getElementById("specHost").innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block;background:#FFFDFA;border:1px solid var(--line);border-radius:10px">
-      ${grid}${line(d.spec_before, "#7096D1", 1.4)}${line(d.spec_after, "#081F5C", 1.8)}
-      <text x="${W - R}" y="${T + 12}" text-anchor="end" font-size="11" fill="#081F5C">处理后</text>
-      <text x="${W - R}" y="${T + 28}" text-anchor="end" font-size="11" fill="#7096D1">原片</text>
+      ${grid}${line(d.spec_before, "#7096D1", 1.3)}${line(d.spec_after, "#081F5C", 1.7)}
+      <text x="${W - R}" y="${T + 11}" text-anchor="end" font-size="10" fill="#081F5C">处理后</text>
+      <text x="${W - R}" y="${T + 24}" text-anchor="end" font-size="10" fill="#7096D1">原片</text>
     </svg>`;
 }
 

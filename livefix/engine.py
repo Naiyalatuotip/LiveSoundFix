@@ -51,8 +51,10 @@ DEFAULT_CONFIG = {
         "sep": {"on": True, "mix": 100, "mode": "hpss", "routing": "graded",
                 "vocal_gain": 1.0, "low_gain": 1.0, "perc_gain": 1.0, "other_gain": 0.6},
         "ai": {"on": False, "mix": 100, "model": "none", "focus": "low", "strength": 0.7},
-        # 用户版 m5：只留交流声抑制，降噪/削波/泵感全关（floor_db 因此不参与计算）
-        "m5": {"on": True, "mix": 100, "denoise": 0.0, "floor_db": -60, "hum": 0.20,
+        # 用户版 m5：只留交流声抑制。dereverb（场地去混响 / 中低频抑共振）默认 0，由用户
+        # 按场地在预览中试听决定 —— 2026-10-14 起原 denoise + floor_db 已删除，位置由 dereverb 取代，
+        # 因两者原来都是 0，默认听感不变（见 CHANGELOG.md）。
+        "m5": {"on": True, "mix": 100, "dereverb": 0.0, "hum": 0.20,
                "mains": 50, "declip": 0.0, "pump": 0.0},
         # 用户版 m1：冲击力拉到 0.50；tame 未在 UI 暴露，保持 0（此前实测为净损失）
         # 新增 ring（低频混响衰减）/ dive（下潜重建，20-50Hz）：scan_m1_extra 在冻结基准上

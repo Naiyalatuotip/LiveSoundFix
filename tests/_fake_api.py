@@ -26,7 +26,7 @@ DEFAULT_CONFIG = {
         "sep": {"on": False, "mix": 100, "mode": "hpss", "routing": "graded",
                 "vocal_gain": 1.0, "low_gain": 1.0, "perc_gain": 1.0, "other_gain": 1.0},
         "ai": {"on": False, "mix": 100, "model": "none", "focus": "low", "strength": 0.7},
-        "m5": {"on": True, "mix": 100, "denoise": 0.5, "floor_db": -18, "hum": 0.6,
+        "m5": {"on": True, "mix": 100, "dereverb": 0.5, "hum": 0.6,
                "mains": 50, "declip": 0.6, "pump": 0.4},
         "m1": {"on": True, "mix": 100, "weight": 0.6, "density": 0.5, "sub": 0.4, "punch": 0.5},
         "m2": {"on": True, "mix": 100, "air": 0.5, "detail": 0.5, "dehiss": 0.4, "ext_hz": 11000},

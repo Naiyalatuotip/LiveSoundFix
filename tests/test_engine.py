@@ -45,10 +45,10 @@ FROZEN = {
     "sep": {"on": True, "mode": "hpss", "routing": "graded", "vocal_gain": 1.0,
             "low_gain": 1.0, "perc_gain": 1.0, "other_gain": 0.6},
     "ai": {"on": False, "model": "none", "focus": "low", "strength": 0.7},
-    "m5": {"on": True, "denoise": 0.0, "floor_db": -60, "hum": 0.20, "mains": 50,
+    "m5": {"on": True, "dereverb": 0.0, "hum": 0.20, "mains": 50,
            "declip": 0.0, "pump": 0.0},
     "m1": {"on": True, "weight": 0.20, "density": 0.25, "sub": 0.15, "punch": 0.50,
-           "tame": 0.0, "tame_f": 63.0, "tame_q": 2.0},
+           "tame": 0.0, "tame_f": 63.0, "tame_q": 2.0, "ring": 0.0, "dive": 0.0},
     "m2": {"on": True, "air": 0.45, "detail": 0.50, "dehiss": 0.10, "ext_hz": 15100},
     "m3": {"on": True, "clarity": 0.35, "room": 0.50, "harsh": 0.0, "ess": 0.0},
     "m4": {"on": True, "width_low": 0.56, "width_mid": 1.75, "width_high": 1.75,
@@ -64,6 +64,9 @@ for mk, params in FROZEN.items():
         if got != want:
             bad.append(f"{mk}.{k}: {got!r} != 冻结值 {want!r}")
 assert not bad, "默认参数被改动（应与用户冻结版一致）：\n  " + "\n  ".join(bad)
+# 已删除的参数不得复活（2026-10-14：m5 的 denoise / floor_db 被 dereverb 取代）
+for gone in ("denoise", "floor_db"):
+    assert gone not in d["modules"]["m5"], f"m5.{gone} 已被删除，不应再出现在默认配置里"
 assert all(d["modules"][mk]["mix"] == 100 for mk in engine.CHAIN), "所有模块 mix 应为 100"
 assert d["export"] == {"channels": "stereo", "bit_depth": 24, "loudnorm": True}
 print(f"默认参数冻结校验 OK（{sum(len(v) for v in FROZEN.values())} 项逐项一致）")

@@ -193,7 +193,7 @@ api.models()     # -> {"models":["none", ...livefix_models/*.npz 文件名]}
 {"modules":{
  "sep":{"on":true,"mix":100,"mode":"hpss","routing":"graded","vocal_gain":1.0,"low_gain":1.0,"perc_gain":1.0,"other_gain":0.6},
  "ai":{"on":false,"mix":100,"model":"none","focus":"low","strength":0.7},
- "m5":{"on":true,"mix":100,"denoise":0.0,"floor_db":-60,"hum":0.2,"mains":50,"declip":0.0,"pump":0.0},
+ "m5":{"on":true,"mix":100,"dereverb":0.0,"hum":0.2,"mains":50,"declip":0.0,"pump":0.0},
  "m1":{"on":true,"mix":100,"weight":0.2,"density":0.25,"sub":0.15,"punch":0.5,"tame":0.0,"tame_f":63.0,"tame_q":2.0,"ring":0.0,"dive":0.0},
  "m2":{"on":true,"mix":100,"air":0.45,"detail":0.5,"dehiss":0.1,"ext_hz":15100},
  "m3":{"on":true,"mix":100,"clarity":0.35,"room":0.5,"harsh":0.0,"ess":0.0},
@@ -238,7 +238,7 @@ api.models()     # -> {"models":["none", ...livefix_models/*.npz 文件名]}
 | m3.ess | 5.8-13kHz | −0.5 | **−8.7** |
 | m4.width_low/mid/high | 分段侧信号 | **+11~12** | +13~17 |
 | m4.depth | 侧信号 | **+7.1** | +25.3 |
-| m5.denoise | 3-8kHz | **−15.4** | −17.2 |
+| m5.dereverb | 70-600Hz | −2.5 | **−8.1**（动态：动作帧中位 −3.0） |
 | m5.hum | 45-55Hz | **−20.7** | −24.8 |
 | m5.pump | 200-8kHz | +0.2 | **+9.0** |
 | m5.declip | 重建误差 | **+11.6 dB 改善** | — |
@@ -263,6 +263,7 @@ api.models()     # -> {"models":["none", ...livefix_models/*.npz 文件名]}
 | m2 | `air` 合成 4-8k 的 8% 能量，与素材高频存量耦合，拉满只动 0.48dB；斜边放在 ext_hz **以上**导致实际从 13.9k 才满量 | `air` 改「**dB 目标制**」：拉满 = ext_hz 以上带内能量 **+18dB**（相对该带自身，带 4-8k 的 −40dB 下限）；交叉淡化移到 ext_hz **以下** 1/3 八度，`ext_hz` 才真的是「从哪开始补」；扩展上界收在 18kHz（旧版一路铺到 24k，能量大半听不见）；`detail` 改**相位加倍**（真二次谐波）+ 4-8k 高架 6dB；`dehiss` 改为压制**贴近噪声底**的 bin（旧版压的是超底噪 +18dB 的内容，实测几乎不触发） |
 | m3 | `clarity`/`harsh`/`ess` 用绝对阈值（r>1.2 / 超参考+4dB / r2>2），真实混音几乎不触发（拉满 0.17 / 0.11 / 0.01 dB） | 三个都改「**对本轨自身分布的高分位帧生效**」（clarity p55→p92、harsh p75、ess p85），保证任何素材上都有权威度；上限提到 9 / 9 / 18 dB |
 | m4.depth | 对 S 加低通梳状反射后把 S 的 RMS **归一回原值** —— 归一让 S/M 比恒不变，实测 depth 0→1 只动 **0.03dB**（参数完全无效） | 改为把 **M 的全通去相关分量**（3 级一级全通级联，幅度平坦不染色）注入 S，再做 **(M,S) 联合功率归一**（只按总功率缩放两者）→ S/M 比真实上升（实测 ×2.65），而总电平不变（RMS 差 0.000dB）。stats 新增 `mono_fold_db`（单声道折叠损失）与 `norm_db` |
+| m5.dereverb（2026-10-14 **取代 denoise + floor_db**） | `denoise` 为最小值统计谱减（3-8kHz 宽带底噪）+ `floor_db` 增益下限 | 换成「**场地去混响 / 中低频抑共振**」：70-600Hz 内，**压多少**由整带衰减深度定（`pos=(M−E)/(M−F)`，一窗跌幅 ≤35% 或低于峰值 18dB 则不动），**压谁**由逐 bin 衰减门定（持续贝斯基频 bin 自身平坦 → 受保护），**额外量**由该 bin 相对跨频中位数基线（9 bin）的突起定（>3dB 才计，窄带模态高、宽带混响低）。上限 12dB（非共振 bin 打 55%），`env_updown(30ms/40ms)` 慢入快出。实测（真实 60s 素材，拉满）：带内总能量 −2.5dB、动作帧中位 −3.0dB、最深帧 **−8.1dB**；合成「振铃模态」信号：180Hz 共振峰 **−4.8dB**、混响拖尾 **−6.4dB**、干声仅 −0.05dB、带外 3-8kHz **0.00dB**、**持续长音 −0.01dB**（保护有效）。⚠ 限制：48k 下 bin 间隔 23.4Hz，压的是「模态所在窄频区」而非 Q>30 单点陷波；密集无间隙素材上衰减结构难分离，效果自然减弱 |
 | m5.pump | 单帧修正上限 ±6dB | ±9dB |
 | m6.lra | 参考点固定 `p10 + lra_t`，目标远低于素材 LRA 时压不动 | 沿分位数扫参考点取最接近目标的曲线。**注意**：不要加「向上抬升」来压 LRA —— 抬安静段会让它们穿过 EBU 相对门进入门控集合，实测把高动态素材 LRA 从 ~7 推到 15.8 |
 | dyneq | `thr_db` 默认 −24，但实测 3kHz 带检测电平中位约 **−32dB** → down 模式几乎不触发 | 默认 `thr_db` 改 **−30**；`stats.dyneq.env_db_median` 上报该带检测电平，供 UI 提示用户把阈值设在什么量级 |
@@ -272,7 +273,7 @@ api.models()     # -> {"models":["none", ...livefix_models/*.npz 文件名]}
 ```text
 sep   : on  hpss  graded  vocal/low/perc=1.0  other_gain=0.6      （截图未含，维持旧校准值）
 ai    : off                                                       （接口预留，截图未含）
-m5    : on  denoise=0.00  floor_db=-60  hum=0.20  mains=50  declip=0.00  pump=0.00
+m5    : on  dereverb=0.00  hum=0.20  mains=50  declip=0.00  pump=0.00
 m1    : on  weight=0.20  density=0.25  sub=0.15  punch=0.50  tame=0  ring=0  dive=0
 m2    : on  air=0.45  detail=0.50  dehiss=0.10  ext_hz=15100
 m3    : on  clarity=0.35  room=0.50  harsh=0.00  ess=0.00
@@ -287,7 +288,11 @@ export: channels=stereo  bit_depth=24  loudnorm=true
 - `tests/test_engine.py` 里有一张 `FROZEN` 表逐项断言（47 项），**误改会立刻测试失败**。
 - `m6 = OFF` 的含义：处理链内不做母带响度归一（实测 20s 测试素材输出 −10.8 LUFS）；
   但 **导出时 `exporter` 仍按 `export.loudnorm=true` 做响度归一** —— 关掉 m6 ≠ 导出不归一。
-- `m5.floor_db=-60` 在 `denoise=0` 时不参与计算（它只是谱减的增益下限）。
+- `m5.dereverb` 默认 0；它只在**正在衰减**的帧上动作（逐 bin 判衰减跨度与自身峰值 18dB 范围），
+  因此攻击、稳态乐音（持续贝斯/长音）与静音段都不受影响 —— 静态共振陷波最大的风险是把乐音基频
+  当模态削掉，这里用「衰减门 + 逐 bin 保护」规避。作用带 70-600Hz，带外恒 1（软边 0.3 八度）。
+- `m5.denoise` 与 `m5.floor_db` 已于 2026-10-14 **删除**（原最小值统计谱减及其增益下限），
+  位置由 `dereverb` 取代；两者原值均为 0/不参与计算，因此默认听感不变。
 
 ### §4.2 为此修改的算法（与旧版行为不同，UI 文案需相应更新）
 

@@ -519,7 +519,7 @@ const TIPS = {
   /* —— 区1 链 9 卡标题 —— */
   "mod.sep": "源分离分级 (sep)\n全频段分四路掩码（HPSS）\n让人声与伴奏能分开修，全增益恒等不变总能量",
   "mod.ai": "AI 重建 (ai)\n30–5000Hz 频谱掩码（预留）\n模型未接入，当前全程透传、无任何效果",
-  "mod.m5": "修复层 (m5)\n削波 / 50Hz 陷波 / 底噪 / 电平\n素材越脏越该开；降噪拉满可压 −15dB",
+  "mod.m5": "修复层 (m5)\n削波 / 50Hz 陷波 / 场地混响 / 电平\n治场地共振与拖尾，去混响拉满 −5~6dB",
   "mod.m1": "中低频重建 (m1)\n30–700Hz 分带增益与次谐波\n低频单薄时补厚度与冲击，拉满 +11dB",
   "mod.m2": "中高频补充 (m2)\n1400–18000Hz 外推与激励\n补被截断的高频，空气感拉满 +7dB",
   "mod.m3": "人声去掩蔽 (m3)\n90Hz–13kHz 动态处理\n人声发糊、残响与齿音重时用，峰值 −9dB",
@@ -537,8 +537,7 @@ const TIPS = {
   "ai.focus": "焦点 (focus)\n增强目标二选一：低频 / 人声\n接口预留，等模型就绪后按素材短板选择",
   "ai.strength": "强度 (strength)\n全频段增强混合比例 0–1\n接口预留暂不可用；默认 0.7，越大越激进",
   /* —— m5 参数 —— */
-  "m5.denoise": "降噪 (denoise)\n3–8kHz 最小值统计谱减 0–1\n压底噪，拉满 −15dB 但会吃细节",
-  "m5.floor_db": "噪底门限 (floor_db)\n全频段谱减增益下限 −60..0dB\n限制最低衰减量：越低降噪越狠、也越吃细节",
+  "m5.dereverb": "去混响 / 抑共振 (dereverb)\n70–600Hz 的衰减段，0–1\n只压场地拖尾与模态、长音不动，实测 −5~6dB",
   "m5.hum": "交流声抑制 (hum)\n50/100Hz 陷波，0–1\n有哼声才开；拉满可压 −21dB，没哼声会伤低音",
   "m5.mains": "市电频率 (mains)\n陷波落在 50 或 60Hz\n中国电网选 50；选错则陷在错误频率、等于无效",
   "m5.declip": "削波重建 (declip)\n全频段削平波峰 Hermite 重建 0–1\n修削顶失真，重削波误差实测改善 12dB",
@@ -728,9 +727,8 @@ const MODS = {
     { k: "focus", label: "焦点", type: "select", opts: [["low", "低频"], ["vocal", "人声"]], disabled: true },
     { k: "strength", label: "强度", min: 0, max: 1, step: .05, dec: 2, disabled: true },
   ]},
-  m5: { name: "修复层", algo: "Hermite 削波重建 · 谐波陷波 Q30 · 最小值统计谱减 · 慢 AGC", params: [
-    { k: "denoise", label: "降噪", min: 0, max: 1, step: .05, dec: 2 },
-    { k: "floor_db", label: "噪底门限", min: -60, max: 0, step: 1, dec: 0, unit: "dB" },
+  m5: { name: "修复层", algo: "Hermite 削波重建 · 谐波陷波 Q30 · 场地去混响 / 中低频抑共振 · 慢 AGC", params: [
+    { k: "dereverb", label: "去混响抑共振", min: 0, max: 1, step: .05, dec: 2 },
     { k: "hum", label: "交流声抑制", min: 0, max: 1, step: .05, dec: 2 },
     { k: "mains", label: "市电频率", type: "select", opts: [[50, "50 Hz"], [60, "60 Hz"]] },
     { k: "declip", label: "削波重建", min: 0, max: 1, step: .05, dec: 2 },

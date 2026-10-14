@@ -79,7 +79,7 @@ def analyze(x, sr):
     if clip_pct > 0.01:
         issue("bad", f"检测到削波样本占 {clip_pct:.2f}%，建议先走去削波修复")
     if nf > -50:
-        issue("warn", f"噪底约 {nf:.0f}dBFS 偏高，建议适度降噪（注意保留信息）")
+        issue("warn", f"噪底约 {nf:.0f}dBFS 偏高（环境声 / 设备底噪），是否处理请在预览中判断")
     if hum:
         issue("warn", f"检测到 {hum}Hz 交流哼声（显著度 {hum_score}dB），建议陷波")
     if corr > 0.8 and x.shape[1] > 1:
@@ -100,8 +100,6 @@ def analyze(x, sr):
         suggest["m2"].update(air=0.85, ext_hz=9000)
     if clip_pct > 0.01:
         suggest["m5"].update(declip=0.8)
-    if nf > -50:
-        suggest["m5"].update(denoise=min(0.75, 0.3 + (-nf - 50) / 30))
     if hum:
         suggest["m5"].update(hum=0.8, mains=hum)
     if corr > 0.8 and x.shape[1] > 1:

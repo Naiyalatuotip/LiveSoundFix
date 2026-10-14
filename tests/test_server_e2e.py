@@ -7,6 +7,8 @@ import os
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -31,6 +33,17 @@ def post(path, obj):
                                  headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=120) as r:
         return r.status, json.loads(r.read())
+
+
+def post_raw(path, blob):
+    """拖拽导入用的原始字节流 POST（不是 JSON）。"""
+    req = urllib.request.Request(BASE + path, data=blob,
+                                 headers={"Content-Type": "application/octet-stream"})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:      # 业务错误用 200，这里兜底非 2xx
+        return e.code, json.loads(e.read() or b"{}")
 
 
 def ensure_fixture():
@@ -174,7 +187,32 @@ def main():
         check("export 烘焙(调音台+EQ)", e.get("ok") and os.path.exists(out_path),
               str({k: e.get(k) for k in ('ok', 'channels', 'duration', 'lufs')}))
 
-        # 8) 错误路径
+        # 8) 拖拽导入（POST /api/upload：原始字节流 + ?name=）
+        blob = open(SRC, "rb").read()
+        st, up = post_raw("/api/upload?name=" + urllib.parse.quote("导入 测试.wav"), blob)
+        check("POST /api/upload", st == 200 and up.get("ok"), str(up)[:120])
+        check("  字节数一致", up.get("bytes") == len(blob), f"{up.get('bytes')} vs {len(blob)}")
+        check("  落盘存在且大小一致",
+              os.path.isfile(up.get("path", "")) and os.path.getsize(up["path"]) == len(blob),
+              str(up.get("path")))
+        check("  落在 cache/import/ 内",
+              os.path.basename(os.path.dirname(up["path"])) == "import", str(up.get("dir")))
+        check("  中文名与空格保留", up.get("name") == "导入 测试.wav", str(up.get("name")))
+        # 导入的路径必须能直接喂给诊断（这就是拖拽导入的闭环）
+        st, dg = post("/api/analyze", {"path": up["path"]})
+        check("  导入物可直接诊断", dg.get("ok") and dg.get("sr"), str(dg)[:100])
+
+        # 目录穿越 + 非法扩展名必须被拒，且不得落到 cache/import/ 之外
+        st, trav = post_raw("/api/upload?name=" + urllib.parse.quote("../../evil.wav"), b"RIFF0000WAVE")
+        check("  目录穿越被清洗到 import 内",
+              trav.get("ok") and trav["name"] == "evil.wav"
+              and os.path.basename(os.path.dirname(trav["path"])) == "import", str(trav)[:100])
+        st, bad_up = post_raw("/api/upload?name=notes.txt", b"hello")
+        check("  非音频扩展名 → ok:false", bad_up.get("ok") is False, str(bad_up)[:100])
+        st, empty = post_raw("/api/upload?name=x.wav", b"")
+        check("  空体 → ok:false", empty.get("ok") is False, str(empty)[:80])
+
+        # 9) 错误路径
         st, bad = post("/api/remix", {"job": "job_nope", "gains": {}})
         check("remix 未知 job → ok:false", bad.get("ok") is False, str(bad))
         st, bad2 = get_json("/api/job?id=job_nope")

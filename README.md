@@ -9,7 +9,7 @@
 | 运行形态 | 本地 HTTP 服务 + 单页 UI（`http://127.0.0.1:8765/`） |
 | 依赖 | `numpy`（唯一硬依赖）；可选 `ffmpeg`（读 mp3/m4a/mov/mp4 时用） |
 | 处理链 | 9 段固定顺序，逐段可开关、可调干湿比、可调音台推子 |
-| 版本 | **v1.1.4** —— 更新内容见 [CHANGELOG.md](CHANGELOG.md) |
+| 版本 | **v1.2.0** —— 更新内容见 [CHANGELOG.md](CHANGELOG.md) |
 | 许可证 | [MIT](LICENSE) |
 
 ---

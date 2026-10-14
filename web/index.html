@@ -147,6 +147,26 @@ table.stg td.off{color:var(--muted);}
 .btrack{display:inline-block; width:54px; height:6px; background:#E4EDF8; border-radius:3px;
   vertical-align:middle; margin-left:4px; overflow:hidden;}
 .btrack .bar{display:block; height:6px; background:var(--mid); border-radius:3px;}
+/* ---------- 拖拽导入区 ---------- */
+.dropzone{border:2px dashed var(--line); border-radius:10px; background:var(--card);
+  padding:14px 18px; margin-bottom:14px; text-align:center; color:var(--muted);
+  cursor:pointer; transition:border-color .14s, background .14s, color .14s;}
+.dropzone:hover{border-color:var(--mid); color:var(--ink);}
+.dropzone .dzicon{display:block; margin:0 auto 6px; color:var(--mid);}
+.dropzone .dzmain{font-size:14px; font-weight:700; color:var(--ink);}
+.dropzone .dzsub{font-size:12px; margin-top:3px;}
+.dropzone .dzprog{display:none; height:5px; border-radius:3px; background:var(--lighter);
+  margin-top:9px; overflow:hidden;}
+.dropzone .dzprog i{display:block; height:5px; width:0; background:var(--blue);
+  border-radius:3px; transition:width .12s linear;}
+.dropzone.over{border-color:var(--blue); background:var(--lighter);}
+.dropzone.over .dzmain{color:var(--blue);}
+.dropzone.busy{border-style:solid; border-color:var(--blue); cursor:progress;}
+.dropzone.busy .dzprog{display:block;}
+.dropzone.done{border-color:#1f6b4a; border-style:solid; color:#1f6b4a;}
+.dropzone.done .dzmain{color:#1f6b4a;}
+.dropzone.err{border-color:var(--bad); border-style:solid;}
+.dropzone.err .dzmain{color:var(--bad);}
 /* ---------- 导出 ---------- */
 .optrow{display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:14px;}
 .optrow .lb{font-size:13px; color:var(--muted);}
@@ -283,7 +303,19 @@ canvas.chart{width:100%; display:block; background:#FBF7F0; border:1px solid var
 
   <!-- 1 文件与诊断 -->
   <section class="sec">
-    <div class="sec-h"><div class="no">1</div><h2>文件与诊断</h2><span class="hint">选择音频文件，先诊断再处理</span></div>
+    <div class="sec-h"><div class="no">1</div><h2>文件与诊断</h2><span class="hint">拖入或选择音频文件，先诊断再处理</span></div>
+    <!-- 拖拽导入区（也可点击选择）：整页都接受拖放，这里只是指定的落点与状态显示 -->
+    <div class="dropzone" id="dropZone" title="拖入音频文件，或点击选择">
+      <svg class="dzicon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+      </svg>
+      <div class="dzmain">拖入音频文件即可导入</div>
+      <div class="dzsub">支持 wav / mp3 / m4a / flac / mov / mp4 等 · 也可点击此处选择文件</div>
+      <div class="dzprog" id="dzProg"><i></i></div>
+    </div>
+    <input type="file" id="fileInput" style="display:none"
+           accept=".wav,.mp3,.m4a,.flac,.aac,.mov,.mp4,.wma,.ogg,.opus,audio/*">
     <div class="grid2">
       <div class="card">
         <div class="crumb" id="crumb"></div>
@@ -1391,6 +1423,110 @@ function selectFile(f) {
 }
 
 /* =========================================================
+   拖拽导入：把文件拖到落点上（整页都可）→ 上传到服务端 cache/import/ → 走原有选文件流程
+   为什么必须上传：浏览器出于安全不给 File 的真实磁盘路径，而引擎要的是服务端路径。
+   ========================================================= */
+const DROP_EXT = [".wav", ".mp3", ".m4a", ".flac", ".aac", ".mov", ".mp4", ".wma", ".ogg", ".opus"];
+const DZ_IDLE = ["拖入音频文件即可导入", "支持 wav / mp3 / m4a / flac / mov / mp4 等 · 也可点击此处选择文件"];
+
+function dzSet(main, sub, cls, pct) {
+  const z = document.getElementById("dropZone");
+  if (!z) return;
+  z.classList.remove("over", "busy", "done", "err");
+  if (cls) z.classList.add(cls);
+  if (main) z.querySelector(".dzmain").textContent = main;
+  if (sub != null) z.querySelector(".dzsub").textContent = sub || "";
+  const bar = document.getElementById("dzProg");
+  if (bar) bar.querySelector("i").style.width = (pct == null ? 0 : Math.round(pct * 100)) + "%";
+}
+function dzReset() { dzSet(DZ_IDLE[0], DZ_IDLE[1], "", null); }
+
+function hasFiles(e) {
+  const t = e.dataTransfer && e.dataTransfer.types;
+  return !!t && Array.prototype.indexOf.call(t, "Files") >= 0;
+}
+
+/* 上传（XHR 而非 fetch：需要上传进度事件，几百 MB 的素材才有反馈） */
+function uploadFile(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload?name=" + encodeURIComponent(file.name));
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    if (xhr.upload) {
+      xhr.upload.onprogress = e => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total); };
+    }
+    xhr.onload = () => {
+      let d = null;
+      try { d = JSON.parse(xhr.responseText); } catch (_) { /* 非 JSON：下方按状态码报错 */ }
+      if (d && d.ok) resolve(d);
+      else reject(new Error((d && d.error) || ("上传失败 HTTP " + xhr.status)));
+    };
+    xhr.onerror = () => reject(new Error("网络错误（服务是否还在运行？）"));
+    xhr.timeout = 0;
+    xhr.send(file);
+  });
+}
+
+async function importDroppedFile(file) {
+  if (!file) return;
+  const ext = ("." + (file.name.split(".").pop() || "")).toLowerCase();
+  if (!DROP_EXT.includes(ext)) {
+    dzSet("不支持这种文件类型", "只接受：" + DROP_EXT.join(" / "), "err", null);
+    setTimeout(dzReset, 2600);
+    return;
+  }
+  if (file.size === 0) {                        // 拖到文件夹时浏览器也会给一个 0 字节 File
+    dzSet("这是空文件（是否拖到了文件夹？）", "请拖具体的音频文件", "err", null);
+    setTimeout(dzReset, 2600);
+    return;
+  }
+  dzSet("正在导入 " + file.name, fmtBytes(file.size), "busy", 0);
+  try {
+    const d = await uploadFile(file, p =>
+      dzSet("正在导入 " + file.name, fmtBytes(file.size) + " · " + Math.round(p * 100) + "%", "busy", p));
+    selectFile({ name: d.name, path: d.path });      // 复用原有选文件流程（启用诊断/处理、设默认导出名）
+    dzSet("已导入 " + d.name, fmtBytes(d.bytes) + " · 已放在 " + d.dir, "done", 1);
+    setTimeout(dzReset, 3200);
+  } catch (e) {
+    dzSet("导入失败", e.message || String(e), "err", null);
+    showBanner("导入失败：" + (e.message || e));
+    setTimeout(dzReset, 4000);
+  }
+}
+
+function initDropZone() {
+  const zone = document.getElementById("dropZone");
+  const input = document.getElementById("fileInput");
+  if (zone && input) {
+    zone.addEventListener("click", () => input.click());
+    input.addEventListener("change", () => {
+      const f = input.files && input.files[0];
+      input.value = "";                              // 允许连续导入同一个文件
+      if (f) importDroppedFile(f);
+    });
+  }
+  // 整页接受拖放：既是指定落点，也顺手挡掉「拖到空白处浏览器直接打开文件」的行为
+  ["dragenter", "dragover"].forEach(t => window.addEventListener(t, e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    if (zone && !zone.classList.contains("busy")) zone.classList.add("over");
+  }));
+  window.addEventListener("dragleave", e => {
+    if (e.relatedTarget === null && zone) zone.classList.remove("over");   // 真正离开窗口才取消高亮
+  });
+  window.addEventListener("drop", e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    if (zone) zone.classList.remove("over");
+    const files = e.dataTransfer.files;
+    if (!files || !files.length) return;
+    if (files.length > 1) showBanner(`一次只能导入一个文件，已取第一个（共 ${files.length} 个）`);
+    importDroppedFile(files[0]);
+  });
+}
+
+/* =========================================================
    诊断
    ========================================================= */
 async function doAnalyze() {
@@ -2138,6 +2274,7 @@ async function init() {
   bindAudioGraph();
   initLiveEq();                            // 区3 实时 EQ 画布（静态曲线先画出来）
   scopeLoop();                             // 区2 曲线 rAF 循环（建图前画静默平线）
+  initDropZone();                          // 拖拽导入（不依赖 /api/state，先绑上）
   try {
     const s = await get("/api/state");
     state.config = s.config;

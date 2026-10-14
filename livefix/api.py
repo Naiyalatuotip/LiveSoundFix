@@ -29,6 +29,33 @@ CLIP_MAX_S = 10.0    # 即时 A/B 片段时长上限
 AUDIO_EXT = {".wav", ".mp3", ".m4a", ".flac", ".aac", ".mov", ".mp4", ".wma", ".ogg", ".opus"}
 _ID_OK = __import__("re").compile(r"^[po]_[a-z0-9]{4,16}$")
 
+# ---------------------------------------------------------------- 拖拽导入
+# 浏览器出于安全不给 File 的真实路径，所以拖进来的文件必须先由服务端落盘，再走原有的
+# 「路径 → 诊断/处理」流程。落盘目录是 cache/ 的**子目录**：§1.2 的缓存清理只扫 cache/ 下的
+# 文件（不递归），因此导入的文件不会被自动回收误删。
+IMPORT_DIR = CACHE / "import"
+_UPLOAD_NAME_SAFE = __import__("re").compile(r"[^0-9A-Za-z._\u4e00-\u9fff()\[\] \-]+")
+
+
+def import_path(name):
+    """把拖入的文件名清洗成落盘路径。返回 (安全文件名, Path)。
+
+    只取最后一段（防目录穿越）、只留安全字符、限制长度，并强制音频扩展名白名单。
+    ⚠ 截断长度时保留扩展名：否则长文件名会先被截掉后缀再被判「无扩展名」，报错让人摸不着头脑。
+    """
+    raw = str(name or "").strip().replace("\\", "/")
+    full = raw.split("/")[-1]
+    ext = Path(full).suffix.lower()
+    stem = full[: len(full) - len(ext)] if ext else full
+    stem = _UPLOAD_NAME_SAFE.sub("_", stem).strip(" .")
+    if not stem:
+        raise ValueError("文件名无效")
+    if ext not in AUDIO_EXT:
+        raise ValueError(f"不支持的文件类型：{ext or '（无扩展名）'}"
+                         f"（可用：{'、'.join(sorted(AUDIO_EXT))}）")
+    base = stem[: 120 - len(ext)] + ext
+    return base, IMPORT_DIR / base
+
 _lock = threading.Lock()
 # id -> (float32 (n,ch), sr)。**有界 LRU**：旧版是无上限 dict，长开服务必然涨爆内存。
 # 淘汰只丢内存引用（磁盘 wav 还在），后续读取会自动回退到读盘，不会失败。
@@ -112,7 +139,7 @@ def _init():
 
 def state():
     return {
-        "version": "1.1.4",     # 与 git tag / GitHub Release 对应，改动见 CHANGELOG.md
+        "version": "1.2.0",     # 与 git tag / GitHub Release 对应，改动见 CHANGELOG.md
         "config": engine.default_config(),
         "models": engine.list_models(),
         "chain": list(engine.CHAIN),

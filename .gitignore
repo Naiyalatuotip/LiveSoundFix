@@ -39,6 +39,7 @@ _scan_err.txt
 
 # ---- UI 调试残留（CDP 脚本 / 截图 / 临时抽出的 js）----
 tests/_tip_*
+tests/_drop_browser_test.js
 tests/_net_diag*.mjs
 tests/_tp2_verify.mjs
 _*.png

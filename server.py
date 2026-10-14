@@ -21,6 +21,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 CACHE = ROOT / "cache"
 INDEX = ROOT / "web" / "index.html"
+_UPLOAD_CHUNK = 1 << 20            # 拖拽导入的流式写入块（1MB）
+_UPLOAD_MAX = 8 * 1024 ** 3        # 拖拽导入单文件上限（8GB，防误拖超大文件写满盘）
 ID_RE = re.compile(r"^[po]_[a-z0-9]{4,16}$")
 JOB_RE = re.compile(r"^job_[a-z0-9]{4,16}$")
 RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")   # 只支持单区间；多区间/不合法一律回退 200
@@ -212,8 +214,49 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
     # ---- POST ----
+    def _upload(self, name: str):
+        """拖拽导入：把原始字节流落盘到 cache/import/，返回可直接喂给 /api/analyze 的路径。
+
+        流式写入（1MB 一块）：几百 MB 的素材不会在内存里整块驻留。
+        先写 .part 再原子改名 —— 上传中断时不会留下半截文件被当成可用素材。
+        """
+        base, dest = _api().import_path(name)          # 校验扩展名 + 清洗文件名（api 侧策略）
+        length = int(self.headers.get("Content-Length") or 0)
+        if length <= 0:
+            raise ValueError("上传体为空")
+        if length > _UPLOAD_MAX:
+            raise ValueError(f"文件过大：{length / 1e9:.1f} GB > 上限 {_UPLOAD_MAX / 1e9:.0f} GB")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_name(dest.name + ".part")
+        got = 0
+        try:
+            with open(tmp, "wb") as fh:
+                while got < length:
+                    chunk = self.rfile.read(min(_UPLOAD_CHUNK, length - got))
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+                    got += len(chunk)
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            raise
+        if got != length:
+            tmp.unlink(missing_ok=True)
+            raise ValueError(f"上传中断：收到 {got} / 期望 {length} 字节")
+        tmp.replace(dest)                              # 原子落位
+        self._json({"ok": True, "name": base, "path": str(dest),
+                    "bytes": got, "dir": str(dest.parent)})
+
     def do_POST(self):  # noqa: N802
-        route = urllib.parse.urlparse(self.path).path
+        parsed = urllib.parse.urlparse(self.path)
+        route = parsed.path
+        if route == "/api/upload":
+            # ⚠ 必须在 _body() 之前分流：上传体是原始字节流，不是 JSON
+            try:
+                self._upload(urllib.parse.parse_qs(parsed.query).get("name", [""])[0])
+            except Exception as e:  # noqa: BLE001
+                self._err(e)
+            return
         try:
             body = self._body()
         except ValueError as e:

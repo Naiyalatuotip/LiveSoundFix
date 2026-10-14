@@ -68,6 +68,7 @@ api.models()     # -> {"models":["none", ...livefix_models/*.npz 文件名]}
 | POST | `/api/remix` | `{"job":"job_xxx","gains":{"sep":1.0,...}}` | `{"ok":true,"id","url"}`；无贡献量时 `{"ok":false,"error":...}` |
 | POST | `/api/clips` | `{"id":p_xxx,"orig_id":o_xxx,"start":69.0,"dur":3.0,"job"?,"gains"?}` | `{"ok":true,"start","dur","sr","samples","parallel","a":{id,url},"b":{id,url}}`（即时 A/B 双侧片段） |
 | POST | `/api/export` | `{"id","channels","bit_depth","loudnorm","out_path","eq_bands"?, "gains"?, "job"?}` | api.export_wav(...)；带 gains+job 时按调音台混音后导出 |
+| POST | `/api/upload?name=<文件名>` | **原始字节流**（`application/octet-stream`，非 JSON） | `{"ok":true,"name","path","bytes","dir"}`；拖拽导入用，见 §1.3 |
 
 - POST 体 UTF-8 JSON；GET 参数用 urllib.parse 解析。
 - `/api/audio` 只从 `cache/` 目录取文件（按 id 白名单，防目录穿越）。
@@ -185,6 +186,23 @@ api.models()     # -> {"models":["none", ...livefix_models/*.npz 文件名]}
 **内存音频缓存同样有界**：`_audio` 是 LRU，上限 1 GB 且至少保留最近 6 条 —— 淘汰
 只丢内存引用（磁盘 wav 还在），后续读取自动回退到读盘，不会失败。
 
+### §1.3 拖拽导入（`POST /api/upload`）
+
+浏览器出于安全不给 `File` 的真实磁盘路径，而引擎要的是**服务端路径**，所以拖进来的文件
+必须先上传落盘，再走原有的「`path` → `/api/analyze` / `/api/job`」流程。
+
+- **请求**：`POST /api/upload?name=<原始文件名>`，请求体是**原始字节流**（不是 JSON）。
+  ⚠ 服务端必须在解析 JSON 体**之前**分流这个路由（上传体不是 JSON）。
+- **落盘**：`cache/import/<清洗后的文件名>`。该目录是 `cache/` 的**子目录**，而 §1.2 的缓存清理
+  只扫 `cache/` 下的文件（不递归）—— 因此**导入的文件不会被自动回收误删**，需要时手动删。
+- **文件名清洗**（`api.import_path`）：只取最后一段（防目录穿越）、非法字符替换为 `_`、
+  总长限 120（**截断时保留扩展名**）、扩展名必须在 `AUDIO_EXT` 白名单内，否则 `ok:false`。
+- **写入方式**：1MB 分块流式写入 `*.part`，完成后**原子改名** —— 中断不会留下半截文件被当成可用素材；
+  单文件上限 8GB。
+- **响应**：`{"ok":true,"name":"曲目 1.wav","path":"<绝对路径>","bytes":123456,"dir":".../cache/import"}`。
+- **UI**：`#dropZone` 是指定落点，同时**整页**都接受拖放（并挡掉「拖到空白处浏览器直接打开文件」）；
+  点击落点等于打开原生文件选择器。用 XHR 而非 fetch 是为了拿到上传进度。
+
 ## 4. 配置对象（client 内存持有，process 时整体上送）
 
 链顺序固定：`sep → ai → m5 → m1 → m2 → m3 → m4 → m6 → dyneq`（dyneq 是最后一步；导出只做峰值安全保护）。
@@ -293,8 +311,6 @@ export: channels=stereo  bit_depth=24  loudnorm=true
   当模态削掉，这里用「衰减门 + 逐 bin 保护」规避。作用带 70-600Hz，带外恒 1（软边 0.3 八度）。
 - `m5.denoise` 与 `m5.floor_db` 已于 2026-10-14 **删除**（原最小值统计谱减及其增益下限），
   位置由 `dereverb` 取代；两者原值均为 0/不参与计算，因此默认听感不变。
-
-### §4.2 为此修改的算法（与旧版行为不同，UI 文案需相应更新）
 
 ## 5. UI 要求（web/index.html）—— 三区布局（2026-10-13 用户草图定稿）
 

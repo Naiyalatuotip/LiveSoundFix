@@ -93,7 +93,7 @@ HPSS（Fitzgerald 2010）、NMF（Lee-Seung 2000）、最小值统计噪声估�
 - **长素材内存随时长近似线性增长**：8.4 分钟实测峰值 5.89 GB，30 分钟立体声 48 k 约需 20 GB。根因是 `m6` / `sep` 整轨单次执行。
 - **诊断层不完全可靠**：市电检测阈值过低，50 Hz / 60 Hz 族信号都可能超阈而被音乐内容误判；高频截止判据在门限附近会抖动。
 - **`cache/` 是可再生中间产物**：包含预览 / 原片 WAV、贡献量 npz、转码结果与 A/B 片段，默认自动回收；`dry_run` 默认 `true`，不显式传 `false` 只报告不删。
-- **测试是独立脚本**，不是 unittest / pytest 用例，所以 `python -m unittest discover` 会报 ImportError，这是预期行为。17 个脚本全部自带 PASS/FAIL 输出与退出码：
+- **测试是独立脚本**，不是 unittest / pytest 用例，所以 `python -m unittest discover` 会报 ImportError，这是预期行为。**18 个脚本**全部自带 PASS/FAIL 输出与退出码：
 
   ```powershell
   Get-ChildItem tests\test_*.py | ForEach-Object { python -X utf8 $_.FullName }
